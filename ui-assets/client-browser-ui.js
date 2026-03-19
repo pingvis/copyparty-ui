@@ -1,0 +1,321 @@
+(function () {
+  "use strict";
+
+  var PATH_PATTERNS = [/^\/shr\//];
+
+  function matchesPath() {
+    return PATH_PATTERNS.some(function (re) {
+      return re.test(location.pathname);
+    });
+  }
+
+  function wantsNativeBrowser() {
+    try {
+      return new URLSearchParams(location.search).has("v");
+    } catch (err) {
+      return /^\?v(?:[=&]|$)/.test(location.search || "");
+    }
+  }
+
+  function text(node) {
+    return (node && node.textContent ? node.textContent : "").replace(/\s+/g, " ").trim();
+  }
+
+  function formatPathTitle(pathText) {
+    return pathText.replace(/^🌲/, "").replace(/\//g, " / ").trim();
+  }
+
+  function pathSegments(pathText) {
+    return pathText
+      .replace(/^🌲/, "")
+      .split("/")
+      .map(function (part) {
+        return part.trim();
+      })
+      .filter(Boolean);
+  }
+
+  function isShareRoot(pathText) {
+    return pathSegments(pathText).length <= 1;
+  }
+
+  function looksLikeEchoRoot(entry, hasFiles) {
+    return (
+      hasFiles &&
+      entry.isFolder &&
+      /^0(?:\s*B)?$/i.test(entry.size || "0") &&
+      (!entry.files || entry.files === "---") &&
+      /^zip$/i.test(entry.kind || "")
+    );
+  }
+
+  function make(tag, className, textContent) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    if (textContent) el.textContent = textContent;
+    return el;
+  }
+
+  function thumbUrl(href) {
+    if (!href || href.charAt(0) === "#") return "";
+    return href + (href.indexOf("?") === -1 ? "?" : "&") + "th=w&cache=i&raster";
+  }
+
+  function pickIndices(table) {
+    var headers = Array.from(table.querySelectorAll("thead th")).map(function (node) {
+      return text(node).replace(/^[^a-z0-9]+/i, "").toLowerCase();
+    });
+    var find = function (name) {
+      return headers.findIndex(function (value) {
+        return value === name;
+      });
+    };
+
+    return {
+      name: find("file name"),
+      size: find("size"),
+      files: find("files"),
+      date: find("date")
+    };
+  }
+
+  function canUpload() {
+    var perms = Array.isArray(window.perms) ? window.perms : [];
+    return perms.indexOf("write") !== -1;
+  }
+
+  var suppressRefreshUntil = 0;
+
+  function delayActiveTabRefresh(ms) {
+    suppressRefreshUntil = Math.max(suppressRefreshUntil, Date.now() + (ms || 0));
+  }
+
+  function findNativeUploadInput() {
+    return (
+      document.querySelector("#op_up2k input[type=file]:not([webkitdirectory])") ||
+      document.getElementById("file1") ||
+      document.querySelector("input[type=file][name='file1[]']")
+    );
+  }
+
+  function openNativeUploadPicker(uploadLink) {
+    delayActiveTabRefresh(15000);
+
+    var input = findNativeUploadInput();
+    if (input && typeof input.click === "function") {
+      input.click();
+      return true;
+    }
+
+    if (uploadLink && typeof uploadLink.click === "function") {
+      uploadLink.click();
+      return true;
+    }
+
+    return false;
+  }
+
+  function enableActiveTabRefresh() {
+    var refreshArmed = false;
+
+    document.addEventListener("visibilitychange", function () {
+      if (Date.now() < suppressRefreshUntil) {
+        refreshArmed = false;
+        return;
+      }
+
+      if (document.hidden) {
+        refreshArmed = true;
+        return;
+      }
+
+      if (refreshArmed) {
+        location.reload();
+      }
+    });
+  }
+
+  function buildHero(zipLink, titleText, uploadLink) {
+    var hero = make("section", null);
+    hero.id = "client-hero";
+    var heroTitle = make("h1", null, titleText);
+
+    hero.appendChild(make("p", "cp-kicker", "Shared Download"));
+    heroTitle.title = titleText;
+    hero.appendChild(heroTitle);
+
+    var actions = make("div", "cp-actions");
+    if (zipLink) {
+      var btn = make("a", "cp-btn primary", "Download Everything");
+      btn.href = zipLink.getAttribute("href");
+      actions.appendChild(btn);
+    }
+
+    if (uploadLink && canUpload()) {
+      var up = make("button", "cp-btn", "Upload Files");
+      up.type = "button";
+      up.addEventListener("click", function (event) {
+        event.preventDefault();
+
+        if (!openNativeUploadPicker(uploadLink)) {
+          location.href = location.pathname + "?v=up2k";
+        }
+      });
+      actions.appendChild(up);
+    }
+
+    hero.appendChild(actions);
+    return hero;
+  }
+
+  function buildCards(table, pathText) {
+    var idx = pickIndices(table);
+    if (idx.name < 0) return null;
+
+    var body = table.tBodies[0];
+    if (!body) return null;
+
+    var wrap = make("section", null);
+    wrap.id = "client-file-cards";
+
+    var entries = Array.from(body.rows)
+      .map(function (row) {
+        if (!row.cells || row.cells.length <= idx.name) return null;
+
+        var primaryLink = row.cells[idx.name].querySelector("a");
+        if (!primaryLink) return null;
+
+        var kindCell = row.cells[0] ? text(row.cells[0]) : "";
+        return {
+          kind: kindCell,
+          isFolder: kindCell.indexOf("DIR") !== -1 || /\/$/.test(text(primaryLink)),
+          href: primaryLink.getAttribute("href"),
+          name: text(primaryLink).replace(/\/$/, ""),
+          size: idx.size >= 0 && row.cells[idx.size] ? text(row.cells[idx.size]) : "",
+          files: idx.files >= 0 && row.cells[idx.files] ? text(row.cells[idx.files]) : "",
+          date: idx.date >= 0 && row.cells[idx.date] ? text(row.cells[idx.date]) : ""
+        };
+      })
+      .filter(Boolean);
+
+    var shareRootName = "";
+    if (isShareRoot(pathText)) {
+      var hasFiles = entries.some(function (entry) {
+        return !entry.isFolder;
+      });
+
+      entries = entries.filter(function (entry) {
+        var isEchoFolder = looksLikeEchoRoot(entry, hasFiles);
+
+        if (isEchoFolder && !shareRootName) {
+          shareRootName = entry.name;
+        }
+
+        return !isEchoFolder;
+      });
+    }
+
+    entries.forEach(function (entry) {
+      var cardClass = "cp-file-card" + (entry.isFolder ? " is-folder" : " has-thumb");
+      var card = make("article", cardClass);
+      var top = make("div", "cp-file-top");
+      var bodyWrap = make("div", "cp-file-body");
+      var main = make("div", "cp-file-main");
+      var actions = make("div", "cp-file-actions");
+
+      if (!entry.isFolder) {
+        var thumbWrap = make("div", "cp-file-thumb-wrap");
+        var thumbLink = make("a", "cp-file-thumb-link");
+        thumbLink.href = entry.href;
+        var thumb = make("img", "cp-file-thumb");
+        thumb.alt = "";
+        thumb.loading = "lazy";
+        thumb.decoding = "async";
+        thumb.src = thumbUrl(entry.href);
+        thumb.addEventListener("error", function () {
+          card.classList.remove("has-thumb");
+          thumbWrap.remove();
+        });
+        thumbLink.appendChild(thumb);
+        thumbWrap.appendChild(thumbLink);
+        top.appendChild(thumbWrap);
+      }
+
+      if (entry.isFolder) {
+        main.appendChild(make("span", "cp-kind", "Folder"));
+      }
+
+      var nameLink = make("a", "cp-file-name", entry.name || entry.href);
+      nameLink.href = entry.href;
+      if (!entry.isFolder) {
+        nameLink.setAttribute("download", entry.name || "");
+      }
+      main.appendChild(nameLink);
+
+      var meta = make("div", "cp-file-meta");
+      if (entry.size) meta.appendChild(make("span", null, "Size: " + entry.size));
+      if (entry.files && entry.files !== "---") meta.appendChild(make("span", null, "Items: " + entry.files));
+      if (entry.date && entry.date !== "---") meta.appendChild(make("span", null, "Updated: " + entry.date));
+      main.appendChild(meta);
+
+      var openBtn = make("a", "cp-card-btn", entry.isFolder ? "Open Folder" : "Download File");
+      openBtn.href = entry.href;
+      if (!entry.isFolder) {
+        openBtn.setAttribute("download", entry.name || "");
+      }
+      actions.appendChild(openBtn);
+
+      if (entry.isFolder) {
+        var zipBtn = make("a", "cp-card-btn", "Download Folder");
+        zipBtn.href = entry.href.replace(/\/?$/, "/") + "?zip";
+        actions.appendChild(zipBtn);
+      }
+
+      bodyWrap.appendChild(main);
+      bodyWrap.appendChild(actions);
+      top.appendChild(bodyWrap);
+      card.appendChild(top);
+      wrap.appendChild(card);
+    });
+
+    return {
+      cards: wrap,
+      shareRootName: shareRootName
+    };
+  }
+
+  function init() {
+    if (!matchesPath()) return;
+    if (wantsNativeBrowser()) return;
+
+    enableActiveTabRefresh();
+
+    var table = document.getElementById("files");
+    if (!table) return;
+
+    var zipLink = document.querySelector('a[href*="?zip"]');
+    var uploadLink = document.getElementById("opa_up");
+    var path = document.getElementById("path");
+    var pathText = path ? text(path) : "";
+    var titleText = path ? formatPathTitle(pathText) : "Downloads";
+
+    var cardView = buildCards(table, pathText);
+    if (!cardView) return;
+
+    var hero = buildHero(zipLink, cardView.shareRootName || titleText || "Downloads", uploadLink);
+    var cards = cardView.cards;
+
+    document.documentElement.classList.add("cp-simple-browser-root");
+    document.body.classList.add("cp-simple-browser");
+
+    var anchor = table.parentNode;
+    anchor.insertBefore(hero, table);
+    anchor.insertBefore(cards, table);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init, { once: true });
+  } else {
+    init();
+  }
+})();

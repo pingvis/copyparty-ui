@@ -1,0 +1,340 @@
+:root {
+  --cp-bg: #15171b;
+  --cp-bg-2: #1b1e24;
+  --cp-panel: rgba(28, 31, 37, 0.88);
+  --cp-panel-2: rgba(24, 27, 33, 0.94);
+  --cp-ink: #f3f4f6;
+  --cp-muted: #b4b9c1;
+  --cp-line: rgba(255, 255, 255, 0.12);
+  --cp-brand: #d5dae1;
+  --cp-brand-2: #f3f4f6;
+  --cp-shadow: 0 28px 70px rgba(0, 0, 0, 0.32);
+  --cp-radius: 22px;
+}
+
+html.cp-simple-browser-root {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.06), transparent 28rem),
+    radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.04), transparent 24rem),
+    linear-gradient(180deg, var(--cp-bg), var(--cp-bg-2));
+}
+
+body.cp-simple-browser {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.04), transparent 28rem),
+    radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.03), transparent 24rem),
+    var(--cp-bg);
+  color: var(--cp-ink);
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+body.cp-simple-browser #tree,
+body.cp-simple-browser #ops,
+body.cp-simple-browser #widget,
+body.cp-simple-browser #op_search,
+body.cp-simple-browser #op_player,
+body.cp-simple-browser #op_bup,
+body.cp-simple-browser #op_mkdir,
+body.cp-simple-browser #op_new_md,
+body.cp-simple-browser #op_msg,
+body.cp-simple-browser #op_unpost,
+body.cp-simple-browser #op_cfg,
+body.cp-simple-browser #pro,
+body.cp-simple-browser #epi,
+body.cp-simple-browser #opdesc,
+body.cp-simple-browser .ayjump,
+body.cp-simple-browser h2 {
+  display: none !important;
+}
+
+body.cp-simple-browser #path {
+  margin: 0 0 1rem;
+  font-size: 0;
+}
+
+body.cp-simple-browser #client-hero {
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--cp-line);
+  border-radius: 28px;
+  background: var(--cp-panel);
+  box-shadow: var(--cp-shadow);
+  backdrop-filter: blur(8px);
+}
+
+body.cp-simple-browser #client-hero .cp-kicker {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cp-brand);
+}
+
+body.cp-simple-browser #client-hero h1 {
+  margin: 0;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(2rem, 6vw, 4.25rem);
+  line-height: 0.94;
+  letter-spacing: -0.03em;
+}
+
+body.cp-simple-browser #client-hero p {
+  max-width: 44rem;
+  margin: 0.9rem 0 0;
+  line-height: 1.65;
+  color: var(--cp-muted);
+}
+
+body.cp-simple-browser #client-hero .cp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 1.2rem;
+}
+
+body.cp-simple-browser #client-hero .cp-btn,
+body.cp-simple-browser .cp-file-card .cp-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0.5rem 0.82rem;
+  border: 1px solid var(--cp-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--cp-ink);
+  text-decoration: none;
+  font-weight: 700;
+  text-shadow: none;
+  box-shadow: none;
+  filter: none;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+body.cp-simple-browser #client-hero .cp-btn:hover,
+body.cp-simple-browser .cp-file-card .cp-card-btn:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+body.cp-simple-browser #client-hero .cp-btn.primary {
+  border-color: rgba(255, 255, 255, 0.88);
+  background: #ffffff;
+  color: #111111;
+}
+
+body.cp-simple-browser #client-file-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+body.cp-simple-browser .cp-file-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid var(--cp-line);
+  border-radius: var(--cp-radius);
+  background: var(--cp-panel-2);
+  box-shadow: 0 10px 28px rgba(31, 41, 51, 0.08);
+}
+
+body.cp-simple-browser .cp-file-card.is-folder {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(215, 177, 93, 0.2);
+  background:
+    radial-gradient(circle at top left, rgba(215, 177, 93, 0.09), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+    var(--cp-panel-2);
+}
+
+body.cp-simple-browser .cp-file-card.is-folder::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 1rem;
+  bottom: 1rem;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 218, 139, 0.95), rgba(196, 140, 39, 0.88));
+}
+
+body.cp-simple-browser .cp-file-top {
+  display: grid;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+body.cp-simple-browser .cp-file-card.has-thumb .cp-file-top {
+  grid-template-columns: minmax(0, 228px) minmax(0, 1fr);
+}
+
+body.cp-simple-browser .cp-file-card:not(.has-thumb) .cp-file-top {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.cp-simple-browser .cp-file-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: stretch;
+  min-width: 0;
+  height: 100%;
+}
+
+body.cp-simple-browser .cp-file-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.cp-simple-browser .cp-file-thumb-wrap {
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  border: 1px solid var(--cp-line);
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+body.cp-simple-browser .cp-file-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  vertical-align: top;
+  object-fit: cover;
+  object-position: center;
+}
+
+body.cp-simple-browser .cp-file-thumb-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  overflow: hidden;
+  line-height: 0;
+  font-size: 0;
+  box-sizing: border-box;
+}
+
+body.cp-simple-browser .cp-kind {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.48rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cp-ink);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+body.cp-simple-browser .cp-file-card.is-folder .cp-kind {
+  background: rgba(215, 177, 93, 0.16);
+  color: #ffe5b1;
+}
+
+body.cp-simple-browser .cp-file-name {
+  display: block;
+  margin-top: 0;
+  color: var(--cp-ink);
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+body.cp-simple-browser .cp-kind + .cp-file-name {
+  margin-top: 0.55rem;
+}
+
+body.cp-simple-browser .cp-file-name:hover {
+  color: var(--cp-ink);
+}
+
+body.cp-simple-browser .cp-file-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  margin-top: 0.3rem;
+  color: var(--cp-muted);
+  font-size: 0.93rem;
+}
+
+body.cp-simple-browser .cp-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  justify-content: flex-end;
+  align-self: flex-end;
+  margin-top: auto;
+}
+
+body.cp-simple-browser .cp-file-card .cp-card-btn {
+  white-space: nowrap;
+}
+
+body.cp-simple-browser #files {
+  display: none !important;
+}
+
+body.cp-simple-browser #acc_info {
+  margin-top: 1rem;
+  color: var(--cp-muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  body.cp-simple-browser #client-file-cards {
+    grid-template-columns: 1fr;
+  }
+
+  body.cp-simple-browser {
+    padding: 0.75rem 0.75rem 3rem;
+  }
+
+  body.cp-simple-browser #client-hero {
+    padding: 1.15rem;
+    border-radius: 22px;
+  }
+
+  body.cp-simple-browser .cp-file-card.has-thumb .cp-file-top,
+  body.cp-simple-browser .cp-file-card:not(.has-thumb) .cp-file-top {
+    grid-template-columns: 1fr;
+  }
+
+  body.cp-simple-browser .cp-file-actions {
+    justify-content: flex-start;
+    align-self: flex-start;
+  }
+
+  body.cp-simple-browser .cp-file-thumb-wrap {
+    aspect-ratio: 1 / 1;
+  }
+}

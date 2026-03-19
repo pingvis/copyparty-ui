@@ -21,13 +21,16 @@
     return (node && node.textContent ? node.textContent : "").replace(/\s+/g, " ").trim();
   }
 
+  function cleanPathText(pathText) {
+    return (pathText || "").replace(/^🌲/, "").trim();
+  }
+
   function formatPathTitle(pathText) {
-    return pathText.replace(/^🌲/, "").replace(/\//g, " / ").trim();
+    return cleanPathText(pathText).replace(/\//g, " / ").trim();
   }
 
   function pathSegments(pathText) {
-    return pathText
-      .replace(/^🌲/, "")
+    return cleanPathText(pathText)
       .split("/")
       .map(function (part) {
         return part.trim();
@@ -36,7 +39,33 @@
   }
 
   function isShareRoot(pathText) {
-    return pathSegments(pathText).length <= 1;
+    var segments = pathSegments(pathText);
+    if (!segments.length) return true;
+
+    if ((segments[0] || "").toLowerCase() === "shr") {
+      return segments.length <= 2;
+    }
+
+    return segments.length <= 1;
+  }
+
+  function pickHeroTitle(pathText, shareRootName) {
+    if (shareRootName) return shareRootName;
+
+    var segments = pathSegments(pathText);
+    if (!segments.length) return "Downloads";
+
+    if ((segments[0] || "").toLowerCase() === "shr") {
+      var pageTitle = (document.title || "").replace(/\s+[|\-]\s+copyparty.*$/i, "").trim();
+      if (pageTitle && pageTitle !== cleanPathText(pathText) && !/^copyparty(?:\s|$)/i.test(pageTitle)) {
+        return pageTitle;
+      }
+
+      var sharedPath = segments.slice(2);
+      return sharedPath.length ? sharedPath[sharedPath.length - 1] : "Shared Folder";
+    }
+
+    return segments[segments.length - 1] || formatPathTitle(pathText) || "Downloads";
   }
 
   function looksLikeEchoRoot(entry, hasFiles) {
@@ -135,13 +164,13 @@
     });
   }
 
-  function buildHero(zipLink, titleText, uploadLink) {
+  function buildHero(zipLink, titleText, titleTooltip, uploadLink) {
     var hero = make("section", null);
     hero.id = "client-hero";
     var heroTitle = make("h1", null, titleText);
 
     hero.appendChild(make("p", "cp-kicker", "Shared Download"));
-    heroTitle.title = titleText;
+    heroTitle.title = titleTooltip || titleText;
     hero.appendChild(heroTitle);
 
     var actions = make("div", "cp-actions");
@@ -166,6 +195,34 @@
 
     hero.appendChild(actions);
     return hero;
+  }
+
+  function mountSimpleShell(hero, cards, table, path, accInfo) {
+    var shell = document.getElementById("cp-simple-shell");
+    if (!shell) {
+      shell = make("main", null);
+      shell.id = "cp-simple-shell";
+      document.body.insertBefore(shell, document.body.firstChild);
+    }
+
+    var helpers = document.getElementById("cp-native-helpers");
+    if (!helpers) {
+      helpers = make("div", "cp-native-helpers");
+      helpers.id = "cp-native-helpers";
+      helpers.setAttribute("aria-hidden", "true");
+    }
+
+    shell.textContent = "";
+    shell.appendChild(hero);
+    shell.appendChild(cards);
+    if (accInfo) shell.appendChild(accInfo);
+    shell.appendChild(helpers);
+
+    if (table) helpers.appendChild(table);
+    if (path) helpers.appendChild(path);
+
+    var uploadPanel = document.getElementById("op_up2k");
+    if (uploadPanel) helpers.appendChild(uploadPanel);
   }
 
   function buildCards(table, pathText) {
@@ -297,20 +354,19 @@
     var uploadLink = document.getElementById("opa_up");
     var path = document.getElementById("path");
     var pathText = path ? text(path) : "";
-    var titleText = path ? formatPathTitle(pathText) : "Downloads";
+    var titleTooltip = path ? formatPathTitle(pathText) : "Downloads";
 
     var cardView = buildCards(table, pathText);
     if (!cardView) return;
 
-    var hero = buildHero(zipLink, cardView.shareRootName || titleText || "Downloads", uploadLink);
+    var heroTitle = pickHeroTitle(pathText, cardView.shareRootName);
+    var hero = buildHero(zipLink, heroTitle, titleTooltip || heroTitle, uploadLink);
     var cards = cardView.cards;
 
     document.documentElement.classList.add("cp-simple-browser-root");
     document.body.classList.add("cp-simple-browser");
 
-    var anchor = table.parentNode;
-    anchor.insertBefore(hero, table);
-    anchor.insertBefore(cards, table);
+    mountSimpleShell(hero, cards, table, path, document.getElementById("acc_info"));
   }
 
   if (document.readyState === "loading") {

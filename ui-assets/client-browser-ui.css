@@ -27,9 +27,31 @@ body.cp-simple-browser {
     radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.03), transparent 24rem),
     var(--cp-bg);
   color: var(--cp-ink);
+  display: block !important;
+  width: auto !important;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+body.cp-simple-browser > :not(#cp-simple-shell):not(script):not(style) {
+  display: none !important;
+}
+
+body.cp-simple-browser #cp-simple-shell {
   max-width: 1100px;
   margin: 0 auto;
   padding: 1.5rem 1rem 4rem;
+}
+
+body.cp-simple-browser #cp-simple-shell .cp-native-helpers {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 
 body.cp-simple-browser #tree,
@@ -64,6 +86,7 @@ body.cp-simple-browser #client-hero {
   background: var(--cp-panel);
   box-shadow: var(--cp-shadow);
   backdrop-filter: blur(8px);
+  min-width: 0;
 }
 
 body.cp-simple-browser #client-hero .cp-kicker {
@@ -77,12 +100,16 @@ body.cp-simple-browser #client-hero .cp-kicker {
 
 body.cp-simple-browser #client-hero h1 {
   margin: 0;
-  display: block;
+  display: -webkit-box;
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: clamp(2rem, 6vw, 4.25rem);
   line-height: 0.94;
   letter-spacing: -0.03em;
@@ -175,8 +202,12 @@ body.cp-simple-browser .cp-file-top {
   align-items: stretch;
 }
 
+body.cp-simple-browser .cp-file-top > * {
+  min-width: 0;
+}
+
 body.cp-simple-browser .cp-file-card.has-thumb .cp-file-top {
-  grid-template-columns: minmax(0, 228px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, min(42%, 228px)) minmax(0, 1fr);
 }
 
 body.cp-simple-browser .cp-file-card:not(.has-thumb) .cp-file-top {
@@ -316,6 +347,10 @@ body.cp-simple-browser #acc_info {
   }
 
   body.cp-simple-browser {
+    overflow-x: hidden;
+  }
+
+  body.cp-simple-browser #cp-simple-shell {
     padding: 0.75rem 0.75rem 3rem;
   }
 
@@ -336,5 +371,11 @@ body.cp-simple-browser #acc_info {
 
   body.cp-simple-browser .cp-file-thumb-wrap {
     aspect-ratio: 1 / 1;
+  }
+}
+
+@media (max-width: 960px) {
+  body.cp-simple-browser .cp-file-card.has-thumb .cp-file-top {
+    grid-template-columns: 1fr;
   }
 }

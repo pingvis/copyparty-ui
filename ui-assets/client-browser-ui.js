@@ -29,6 +29,18 @@
     return cleanPathText(pathText).replace(/\//g, " / ").trim();
   }
 
+  function pathLinkSegments(pathNode) {
+    if (!pathNode) return [];
+
+    return Array.from(pathNode.querySelectorAll("a"))
+      .map(function (link) {
+        return text(link);
+      })
+      .filter(function (part) {
+        return part && part !== "/" && part !== "🌲";
+      });
+  }
+
   function pathSegments(pathText) {
     return cleanPathText(pathText)
       .split("/")
@@ -49,18 +61,22 @@
     return segments.length <= 1;
   }
 
-  function pickHeroTitle(pathText, shareRootName) {
+  function pickHeroTitle(pathText, shareRootName, pathNode) {
     if (shareRootName) return shareRootName;
+
+    var linkSegments = pathLinkSegments(pathNode);
+    if (linkSegments.length) {
+      if ((linkSegments[0] || "").toLowerCase() === "shr") {
+        return linkSegments[linkSegments.length - 1] || "Shared Folder";
+      }
+
+      return linkSegments[linkSegments.length - 1] || "Downloads";
+    }
 
     var segments = pathSegments(pathText);
     if (!segments.length) return "Downloads";
 
     if ((segments[0] || "").toLowerCase() === "shr") {
-      var pageTitle = (document.title || "").replace(/\s+[|\-]\s+copyparty.*$/i, "").trim();
-      if (pageTitle && pageTitle !== cleanPathText(pathText) && !/^copyparty(?:\s|$)/i.test(pageTitle)) {
-        return pageTitle;
-      }
-
       var sharedPath = segments.slice(2);
       return sharedPath.length ? sharedPath[sharedPath.length - 1] : "Shared Folder";
     }
@@ -144,6 +160,62 @@
     return false;
   }
 
+  function findNativeMkdirPanel() {
+    return document.getElementById("op_mkdir");
+  }
+
+  function findNativeMkdirLauncher() {
+    return document.getElementById("opa_mkd");
+  }
+
+  function closeNativeFolderCreator() {
+    var closeLink = document.getElementById("opa_x");
+    if (closeLink && typeof closeLink.click === "function") {
+      closeLink.click();
+    }
+
+    var panel = findNativeMkdirPanel();
+    if (panel) {
+      panel.classList.remove("act");
+    }
+
+    var modal = document.getElementById("cp-mkdir-modal");
+    if (modal) {
+      modal.setAttribute("aria-hidden", "true");
+    }
+
+    document.body.classList.remove("cp-mkdir-open");
+  }
+
+  function openNativeFolderCreator() {
+    var panel = findNativeMkdirPanel();
+    if (!panel) return false;
+
+    var launcher = findNativeMkdirLauncher();
+    if (launcher && typeof launcher.click === "function") {
+      launcher.click();
+    } else {
+      panel.classList.add("act");
+    }
+
+    var modal = document.getElementById("cp-mkdir-modal");
+    if (modal) {
+      modal.setAttribute("aria-hidden", "false");
+    }
+
+    document.body.classList.add("cp-mkdir-open");
+
+    window.setTimeout(function () {
+      var input = panel.querySelector('input[name="name"]');
+      if (input && typeof input.focus === "function") {
+        input.focus();
+        if (typeof input.select === "function") input.select();
+      }
+    }, 0);
+
+    return true;
+  }
+
   function enableActiveTabRefresh() {
     var refreshArmed = false;
 
@@ -164,7 +236,7 @@
     });
   }
 
-  function buildHero(zipLink, titleText, titleTooltip, uploadLink) {
+  function buildHero(zipLink, titleText, titleTooltip, uploadLink, mkdirLink) {
     var hero = make("section", null);
     hero.id = "client-hero";
     var heroTitle = make("h1", null, titleText);
@@ -193,8 +265,91 @@
       actions.appendChild(up);
     }
 
+    if (mkdirLink && canUpload()) {
+      var mkdirBtn = make("button", "cp-btn", "New Folder");
+      mkdirBtn.type = "button";
+      mkdirBtn.addEventListener("click", function (event) {
+        event.preventDefault();
+        openNativeFolderCreator();
+      });
+      actions.appendChild(mkdirBtn);
+    }
+
     hero.appendChild(actions);
     return hero;
+  }
+
+  function mountNativeFolderCreator(shell) {
+    var panel = findNativeMkdirPanel();
+    if (!panel) return;
+
+    var modal = document.getElementById("cp-mkdir-modal");
+    var dialog;
+    var host;
+
+    if (!modal) {
+      modal = make("section", null);
+      modal.id = "cp-mkdir-modal";
+      modal.setAttribute("aria-hidden", "true");
+
+      var backdrop = make("button", "cp-mkdir-backdrop");
+      backdrop.type = "button";
+      backdrop.setAttribute("aria-label", "Close new folder dialog");
+      backdrop.addEventListener("click", function () {
+        closeNativeFolderCreator();
+      });
+
+      dialog = make("div", "cp-mkdir-dialog");
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-labelledby", "cp-mkdir-title");
+
+      var header = make("div", "cp-mkdir-header");
+      var title = make("h2", null, "Create Folder");
+      title.id = "cp-mkdir-title";
+      var closeBtn = make("button", "cp-mkdir-close", "Close");
+      closeBtn.type = "button";
+      closeBtn.addEventListener("click", function () {
+        closeNativeFolderCreator();
+      });
+
+      header.appendChild(title);
+      header.appendChild(closeBtn);
+
+      host = make("div", "cp-mkdir-host");
+
+      dialog.appendChild(header);
+      dialog.appendChild(host);
+      modal.appendChild(backdrop);
+      modal.appendChild(dialog);
+      shell.appendChild(modal);
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && document.body.classList.contains("cp-mkdir-open")) {
+          closeNativeFolderCreator();
+        }
+      });
+    } else {
+      dialog = modal.querySelector(".cp-mkdir-dialog");
+      host = modal.querySelector(".cp-mkdir-host");
+    }
+
+    if (host && panel.parentNode !== host) {
+      host.appendChild(panel);
+    }
+
+    var form = panel.querySelector("form");
+    if (form && !form.dataset.cpSimpleBrowserBound) {
+      form.dataset.cpSimpleBrowserBound = "1";
+      form.addEventListener("submit", function () {
+        delayActiveTabRefresh(15000);
+      });
+    }
+
+    var submit = panel.querySelector('input[type="submit"]');
+    if (submit) {
+      submit.value = "Create";
+    }
   }
 
   function mountSimpleShell(hero, cards, table, path, accInfo) {
@@ -223,6 +378,8 @@
 
     var uploadPanel = document.getElementById("op_up2k");
     if (uploadPanel) helpers.appendChild(uploadPanel);
+
+    mountNativeFolderCreator(shell);
   }
 
   function buildCards(table, pathText) {
@@ -352,6 +509,7 @@
 
     var zipLink = document.querySelector('a[href*="?zip"]');
     var uploadLink = document.getElementById("opa_up");
+    var mkdirLink = findNativeMkdirLauncher();
     var path = document.getElementById("path");
     var pathText = path ? text(path) : "";
     var titleTooltip = path ? formatPathTitle(pathText) : "Downloads";
@@ -359,8 +517,8 @@
     var cardView = buildCards(table, pathText);
     if (!cardView) return;
 
-    var heroTitle = pickHeroTitle(pathText, cardView.shareRootName);
-    var hero = buildHero(zipLink, heroTitle, titleTooltip || heroTitle, uploadLink);
+    var heroTitle = pickHeroTitle(pathText, cardView.shareRootName, path);
+    var hero = buildHero(zipLink, heroTitle, titleTooltip || heroTitle, uploadLink, mkdirLink);
     var cards = cardView.cards;
 
     document.documentElement.classList.add("cp-simple-browser-root");

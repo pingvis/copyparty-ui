@@ -103,7 +103,7 @@
 
   function thumbUrl(href) {
     if (!href || href.charAt(0) === "#") return "";
-    return href + (href.indexOf("?") === -1 ? "?" : "&") + "th=w&cache=i&raster";
+    return href + (href.indexOf("?") === -1 ? "?" : "&") + "th=wf&cache=i&raster";
   }
 
   function pickIndices(table) {
@@ -447,6 +447,10 @@
         thumb.decoding = "async";
         thumb.src = thumbUrl(entry.href);
         thumb.addEventListener("error", function () {
+          if (thumb.src.indexOf("th=wf") !== -1) {
+            thumb.src = thumb.src.replace("th=wf", "th=w");
+            return;
+          }
           card.classList.remove("has-thumb");
           thumbWrap.remove();
         });

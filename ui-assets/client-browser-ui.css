@@ -1,17 +1,17 @@
 html.cp-client-ui-root {
-  --cp-bg: #0b0d10;
-  --cp-bg-soft: #11151a;
-  --cp-panel: #151a20;
-  --cp-panel-raised: #1a2028;
-  --cp-panel-hover: #202832;
-  --cp-text: #f6f4ef;
-  --cp-muted: #9da6b2;
-  --cp-faint: #687381;
+  --cp-bg: #08090a;
+  --cp-bg-soft: #0d0e10;
+  --cp-panel: #121315;
+  --cp-panel-raised: #17181a;
+  --cp-panel-hover: #1d1e21;
+  --cp-text: #f1f1f2;
+  --cp-muted: #a0a1a6;
+  --cp-faint: #6c6d72;
   --cp-border: rgba(255, 255, 255, 0.1);
   --cp-border-strong: rgba(255, 255, 255, 0.18);
-  --cp-accent: #e8b44f;
-  --cp-accent-soft: rgba(232, 180, 79, 0.14);
-  --cp-accent-ink: #171106;
+  --cp-accent: #d3d5da;
+  --cp-accent-soft: rgba(211, 213, 218, 0.08);
+  --cp-accent-ink: #111214;
   --cp-success: #7ed9a6;
   --cp-danger: #ff8c8c;
   --cp-radius-sm: 12px;
@@ -31,8 +31,8 @@ body.cp-client-ui {
   padding: 0 !important;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at 88% -5%, rgba(232, 180, 79, 0.1), transparent 32rem),
-    radial-gradient(circle at 4% 32%, rgba(102, 132, 170, 0.08), transparent 30rem),
+    radial-gradient(circle at 88% -5%, rgba(255, 255, 255, 0.045), transparent 32rem),
+    radial-gradient(circle at 4% 32%, rgba(255, 255, 255, 0.025), transparent 30rem),
     var(--cp-bg) !important;
   color: var(--cp-text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -50,6 +50,9 @@ body.cp-client-ui.cp-modal-open {
 
 body.cp-client-ui > #tree,
 body.cp-client-ui > #ops,
+body.cp-client-ui > #wrap,
+body.cp-client-ui > #srv_info,
+body.cp-client-ui > #rcm,
 body.cp-client-ui > #widget,
 body.cp-client-ui > #path,
 body.cp-client-ui > #acc_info,
@@ -90,8 +93,16 @@ body.cp-client-ui .cp-brand {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
   color: var(--cp-text);
   text-decoration: none;
+}
+
+body.cp-client-ui .cp-topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 body.cp-client-ui .cp-brand-mark {
@@ -105,17 +116,21 @@ body.cp-client-ui .cp-brand-mark {
   font-size: 18px;
   font-weight: 900;
   letter-spacing: -0.06em;
-  box-shadow: 0 9px 28px rgba(232, 180, 79, 0.16);
+  box-shadow: 0 9px 28px rgba(211, 213, 218, 0.1);
 }
 
 body.cp-client-ui .cp-brand-words {
   display: grid;
+  min-width: 0;
   line-height: 1.1;
 }
 
 body.cp-client-ui .cp-brand-words strong {
+  overflow: hidden;
   font-size: 15px;
   letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 body.cp-client-ui .cp-brand-words small {
@@ -141,17 +156,28 @@ body.cp-client-ui .cp-access {
   font-weight: 700;
 }
 
-body.cp-client-ui .cp-access i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--cp-faint);
-  box-shadow: 0 0 0 4px rgba(104, 115, 129, 0.12);
+body.cp-client-ui .cp-access.is-write {
+  border-color: rgba(126, 217, 166, 0.3);
+  color: var(--cp-success);
 }
 
-body.cp-client-ui .cp-access.is-write i {
-  background: var(--cp-success);
-  box-shadow: 0 0 0 4px rgba(126, 217, 166, 0.12);
+body.cp-client-ui .cp-share-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+body.cp-client-ui .cp-header-back,
+body.cp-client-ui .cp-top-refresh {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  border-color: var(--cp-border);
+  background: var(--cp-panel);
+  color: var(--cp-muted);
 }
 
 body.cp-client-ui .cp-hero {
@@ -166,7 +192,7 @@ body.cp-client-ui .cp-hero {
   border-radius: var(--cp-radius-lg);
   background:
     linear-gradient(120deg, rgba(255, 255, 255, 0.025), transparent 55%),
-    radial-gradient(circle at 95% 5%, rgba(232, 180, 79, 0.14), transparent 26rem),
+    radial-gradient(circle at 95% 5%, rgba(211, 213, 218, 0.08), transparent 26rem),
     var(--cp-panel);
   box-shadow: var(--cp-shadow);
 }
@@ -284,7 +310,7 @@ body.cp-client-ui .cp-primary {
   border-color: var(--cp-accent);
   background: var(--cp-accent);
   color: var(--cp-accent-ink);
-  box-shadow: 0 12px 30px rgba(232, 180, 79, 0.14);
+  box-shadow: 0 12px 30px rgba(211, 213, 218, 0.09);
 }
 
 body.cp-client-ui .cp-secondary {
@@ -332,7 +358,7 @@ body.cp-client-ui .cp-preview:focus-visible,
 body.cp-client-ui .cp-file-name:focus-visible,
 body.cp-client-ui .cp-footer a:focus-visible,
 body.cp-client-ui .cp-dropzone:focus-visible {
-  outline: 3px solid rgba(232, 180, 79, 0.42);
+  outline: 3px solid rgba(211, 213, 218, 0.35);
   outline-offset: 3px;
 }
 
@@ -399,7 +425,7 @@ body.cp-client-ui .cp-dropzone {
   gap: 14px;
   margin: 0 16px 16px;
   padding: 18px;
-  border: 1px dashed rgba(232, 180, 79, 0.42);
+  border: 1px dashed rgba(211, 213, 218, 0.32);
   border-radius: 15px;
   background: var(--cp-accent-soft);
   color: var(--cp-text);
@@ -409,7 +435,7 @@ body.cp-client-ui .cp-dropzone {
 
 body.cp-client-ui .cp-dropzone:hover {
   border-color: var(--cp-accent);
-  background: rgba(232, 180, 79, 0.19);
+  background: rgba(211, 213, 218, 0.12);
 }
 
 body.cp-client-ui .cp-dropzone > svg {
@@ -430,6 +456,51 @@ body.cp-client-ui .cp-dropzone small {
   margin-top: 3px;
   color: var(--cp-muted);
   font-size: 12px;
+}
+
+body.cp-client-ui .cp-parallel-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-bg-soft);
+  color: var(--cp-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+body.cp-client-ui .cp-parallel-native {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+body.cp-client-ui .cp-parallel-native a {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 8px;
+  background: var(--cp-panel);
+  color: var(--cp-text);
+  font-size: 16px;
+  text-decoration: none;
+}
+
+body.cp-client-ui .cp-parallel-native input {
+  width: 44px;
+  height: 30px;
+  padding: 4px 6px;
+  border: 1px solid var(--cp-border-strong) !important;
+  border-radius: 8px !important;
+  background: var(--cp-panel) !important;
+  color: var(--cp-text) !important;
+  text-align: center;
 }
 
 body.cp-client-ui .cp-native-upload-host {
@@ -479,21 +550,21 @@ body.cp-client-ui .cp-native-upload-host #u2life {
 }
 
 body.cp-client-ui .cp-native-upload-host #u2btn_ct,
+body.cp-client-ui .cp-native-upload-host #u2btn_cw,
+body.cp-client-ui .cp-native-upload-host #u2btn,
 body.cp-client-ui .cp-native-upload-host #u2cards,
-body.cp-client-ui .cp-native-upload-host #u2etas,
-body.cp-client-ui .cp-native-upload-host #u2life {
+body.cp-client-ui .cp-native-upload-host #u2life,
+body.cp-client-ui .cp-native-upload-host #u2foot {
+  display: none !important;
+}
+
+body.cp-client-ui .cp-native-upload-host #u2etas {
   margin-top: 10px !important;
   padding: 12px !important;
   border: 1px solid var(--cp-border) !important;
   border-radius: var(--cp-radius-sm) !important;
   background: var(--cp-bg-soft) !important;
   color: var(--cp-muted) !important;
-}
-
-body.cp-client-ui .cp-native-upload-host #u2cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 body.cp-client-ui .cp-native-upload-host #u2cards a,
@@ -545,26 +616,6 @@ body.cp-client-ui .cp-content {
 body.cp-client-ui .cp-content.is-loading {
   opacity: 0.62;
   pointer-events: none;
-}
-
-body.cp-client-ui .cp-content-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-body.cp-client-ui .cp-content-head .cp-eyebrow {
-  margin-bottom: 5px;
-}
-
-body.cp-client-ui .cp-content-head h2 {
-  margin: 0;
-  color: var(--cp-text);
-  font-size: clamp(23px, 3vw, 32px);
-  font-weight: 720;
-  letter-spacing: -0.035em;
 }
 
 body.cp-client-ui .cp-icon-button {
@@ -621,7 +672,7 @@ body.cp-client-ui .cp-folder-card {
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(232, 180, 79, 0.18);
+  border: 1px solid rgba(211, 213, 218, 0.14);
   border-radius: var(--cp-radius);
   background:
     linear-gradient(110deg, var(--cp-accent-soft), transparent 62%),
@@ -631,7 +682,7 @@ body.cp-client-ui .cp-folder-card {
 
 body.cp-client-ui .cp-folder-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(232, 180, 79, 0.38);
+  border-color: rgba(211, 213, 218, 0.3);
   background-color: var(--cp-panel-raised);
 }
 
@@ -652,7 +703,7 @@ body.cp-client-ui .cp-folder-icon {
   height: 44px;
   place-items: center;
   border-radius: 12px;
-  background: rgba(232, 180, 79, 0.14);
+  background: rgba(211, 213, 218, 0.08);
   color: var(--cp-accent);
 }
 
@@ -727,7 +778,7 @@ body.cp-client-ui .cp-preview {
   overflow: hidden;
   border-bottom: 1px solid var(--cp-border);
   background:
-    radial-gradient(circle at 70% 15%, rgba(232, 180, 79, 0.09), transparent 45%),
+    radial-gradient(circle at 70% 15%, rgba(211, 213, 218, 0.05), transparent 45%),
     var(--cp-bg-soft);
 }
 
@@ -1028,17 +1079,10 @@ body.cp-client-ui .cp-sr-only {
     height: 34px;
   }
 
-  body.cp-client-ui .cp-access span:last-child {
-    display: none;
-  }
-
   body.cp-client-ui .cp-access {
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
     min-height: 32px;
-    justify-content: center;
-    padding: 0;
+    padding: 6px 9px;
+    font-size: 11px;
   }
 
   body.cp-client-ui .cp-hero {
@@ -1066,6 +1110,16 @@ body.cp-client-ui .cp-sr-only {
   }
 
   body.cp-client-ui .cp-hero-actions .cp-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  body.cp-client-ui .cp-share-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.cp-client-ui .cp-share-actions .cp-button {
     width: 100%;
     min-width: 0;
   }

@@ -18,6 +18,9 @@ test("native recovery parameters bypass the client UI", () => {
   assert.equal(ui.wantsNativeBrowser("?v"), true);
   assert.equal(ui.wantsNativeBrowser("?v=up2k"), true);
   assert.equal(ui.wantsNativeBrowser("?fullui"), true);
+  assert.equal(ui.wantsNativeBrowser("", "#cp-native"), true);
+  assert.equal(ui.wantsNativeBrowser("", "", "https://files.example/shr/demo/?fullui"), true);
+  assert.equal(ui.wantsNativeBrowser("", "", "", true), true);
   assert.equal(ui.wantsNativeBrowser("?k=secret"), false);
 });
 
@@ -39,7 +42,7 @@ test("share context hides token at root and decodes folders", () => {
     token: "token123",
     folders: [],
     root: "/shr/token123/",
-    title: "Shared files"
+    title: "Shared folder"
   });
   assert.equal(ui.shareContext("/shr/token123/Client%20Exports/").title, "Client Exports");
 });

@@ -69,7 +69,11 @@ function page(writable) {
       <div id="u2etas">waiting for files</div>
       <div id="u2life">uploads stay in this fixture</div>
       <div id="u2tabw"><table id="u2tab"><tbody></tbody></table></div>
-      <table id="u2conf"></table>
+      <table id="u2conf"><tbody><tr><td>
+        <a href="#" id="nthread_sub">−</a>
+        <input id="nthread" value="2" inputmode="numeric" aria-label="Parallel uploads">
+        <a href="#" id="nthread_add">+</a>
+      </td></tr></tbody></table>
     </section>
     <section id="op_mkdir" class="opview">
       <form><input name="name" placeholder="Folder name"><input type="submit" value="Create"><span class="msg"></span></form>
@@ -78,6 +82,8 @@ function page(writable) {
   </main>
   <div id="path">/shr/fixture/</div>
   <div id="acc_info">${access}</div>
+  <div id="wrap"><p>native file manager must stay hidden</p></div>
+  <div id="srv_info">native server footer must stay hidden</div>
   <div id="modal"></div>
   <div id="toast"></div>
   <script src="/ui-assets/client-browser-ui.js"></script>
@@ -89,14 +95,24 @@ function page(writable) {
       event.preventDefault();
       this.querySelector(".msg").textContent = "fixture folder created";
     });
+    document.getElementById("nthread_sub").addEventListener("click", function (event) {
+      event.preventDefault();
+      var input = document.getElementById("nthread");
+      input.value = Math.max(0, Number(input.value || 0) - 1);
+    });
+    document.getElementById("nthread_add").addEventListener("click", function (event) {
+      event.preventDefault();
+      var input = document.getElementById("nthread");
+      input.value = Math.min(16, Number(input.value || 0) + 1);
+    });
   </script>
 </body>
 </html>`;
 }
 
 const preview = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e8b44f"/><stop offset="1" stop-color="#26384a"/></linearGradient></defs>
-  <rect width="1600" height="1000" fill="#11151a"/><circle cx="1250" cy="180" r="520" fill="url(#g)" opacity=".65"/><rect x="130" y="590" width="980" height="180" rx="42" fill="#f6f4ef" opacity=".92"/>
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c8cbd1"/><stop offset="1" stop-color="#242529"/></linearGradient></defs>
+  <rect width="1600" height="1000" fill="#0d0e10"/><circle cx="1250" cy="180" r="520" fill="url(#g)" opacity=".5"/><rect x="130" y="590" width="980" height="180" rx="42" fill="#ececef" opacity=".9"/>
 </svg>`;
 
 const server = http.createServer(async (request, response) => {

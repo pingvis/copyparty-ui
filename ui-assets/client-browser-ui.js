@@ -16,12 +16,14 @@
     return SHARE_PATH.test(pathname || "");
   }
 
-  function wantsNativeBrowser(search) {
+  function wantsNativeBrowser(search, hash, initialHref, fullUiFlag) {
+    if (hash === "#cp-native" || fullUiFlag) return true;
+
     try {
-      var params = new URLSearchParams(search || "");
+      var params = new URL(initialHref || search || "", "https://copyparty.invalid/").searchParams;
       return params.has("v") || params.has("fullui");
     } catch (err) {
-      return /(?:^|[?&])(?:v|fullui)(?:[=&]|$)/.test(search || "");
+      return /(?:^|[?&])(?:v|fullui)(?:[=&]|$)/.test(initialHref || search || "");
     }
   }
 
@@ -99,6 +101,7 @@
   function icon(name) {
     var icons = {
       arrow: "M5 12h14M13 6l6 6-6 6",
+      back: "M19 12H5m6-6-6 6 6 6",
       chevron: "m9 18 6-6-6-6",
       download: "M12 3v12m0 0 4-4m-4 4-4-4M5 21h14",
       folder: "M3 7h6l2 2h10v10H3z",
@@ -146,7 +149,7 @@
       token: token,
       folders: folders,
       root: "/shr/" + token + "/",
-      title: folders.length ? safeDecode(folders[folders.length - 1]) : "Shared files"
+      title: folders.length ? safeDecode(folders[folders.length - 1]) : "Shared folder"
     };
   }
 
@@ -188,103 +191,62 @@
 
   function createShell(data) {
     var context = shareContext(location.pathname);
+    var parent = parentHref(context);
     var shell = make("main", "cp-shell");
     shell.id = "cp-client-shell";
 
     var topbar = make("header", "cp-topbar");
-    var brand = make("a", "cp-brand");
-    brand.href = context.root;
-    brand.setAttribute("aria-label", "AVideo shared files home");
-    brand.appendChild(make("span", "cp-brand-mark", "A"));
+    var brand = make("div", "cp-brand");
+    if (parent) {
+      var headerBack = linkButton("Back", parent, "cp-icon-button cp-header-back", "back");
+      headerBack.setAttribute("aria-label", "Back to parent folder");
+      brand.appendChild(headerBack);
+    }
     var brandWords = make("span", "cp-brand-words");
-    brandWords.appendChild(make("strong", null, data.srvinf || "AVideo"));
+    brandWords.appendChild(make("strong", null, context.title));
     brandWords.appendChild(make("small", null, "Client delivery"));
     brand.appendChild(brandWords);
     topbar.appendChild(brand);
 
-    var access = make("span", "cp-access " + (canWrite(data) ? "is-write" : "is-read"));
-    access.appendChild(make("i"));
-    access.appendChild(make("span", null, canWrite(data) ? "Uploads enabled" : "View only"));
-    topbar.appendChild(access);
-    shell.appendChild(topbar);
-
-    var hero = make("section", "cp-hero");
-    var heroCopy = make("div", "cp-hero-copy");
-    heroCopy.appendChild(buildBreadcrumbs(context));
-    heroCopy.appendChild(make("p", "cp-eyebrow", context.folders.length ? "Folder" : "Secure file delivery"));
-    var title = make("h1", null, context.title);
-    title.title = context.title;
-    heroCopy.appendChild(title);
-    heroCopy.appendChild(
-      make(
-        "p",
-        "cp-hero-note",
-        canWrite(data)
-          ? "Download what you need or add files to this shared space."
-          : "Everything here is ready to preview or download."
-      )
-    );
-    hero.appendChild(heroCopy);
-
-    var heroActions = make("div", "cp-hero-actions");
-    if (canWrite(data)) {
-      var upload = button("Upload files", "cp-button cp-primary", "upload");
-      upload.addEventListener("click", function () {
-        openUploader(true);
-      });
-      heroActions.appendChild(upload);
-    }
-
-    var downloadAll = linkButton("Download all", withQuery(location.href, "zip"), "cp-button cp-secondary", "download");
-    heroActions.appendChild(downloadAll);
-
-    var parent = parentHref(context);
-    if (parent) {
-      var up = linkButton("Back", parent, "cp-button cp-quiet", "arrow");
-      up.classList.add("cp-back");
-      heroActions.appendChild(up);
-    }
-
-    if (canWrite(data) && document.getElementById("op_mkdir")) {
-      var mkdir = button("New folder", "cp-button cp-quiet", "folder");
-      mkdir.addEventListener("click", openFolderCreator);
-      heroActions.appendChild(mkdir);
-    }
-
-    hero.appendChild(heroActions);
-    shell.appendChild(hero);
-
-    if (canWrite(data)) shell.appendChild(buildUploadSection());
-
-    var content = make("section", "cp-content");
-    var contentHead = make("div", "cp-content-head");
-    var headingWrap = make("div");
-    headingWrap.appendChild(make("p", "cp-eyebrow", "Contents"));
-    var heading = make("h2", null, "Files and folders");
-    heading.id = "cp-content-title";
-    headingWrap.appendChild(heading);
-    contentHead.appendChild(headingWrap);
-
-    var refresh = button("Refresh", "cp-icon-button", "refresh");
+    var topbarTools = make("div", "cp-topbar-tools");
+    var refresh = button("Refresh", "cp-icon-button cp-top-refresh", "refresh");
     refresh.setAttribute("aria-label", "Refresh file list");
     refresh.addEventListener("click", function () {
       refreshListing(true);
     });
-    contentHead.appendChild(refresh);
-    content.appendChild(contentHead);
+    topbarTools.appendChild(refresh);
+
+    var access = make("span", "cp-access " + (canWrite(data) ? "is-write" : "is-read"));
+    access.appendChild(make("span", null, canWrite(data) ? "Read/write" : "Read only"));
+    topbarTools.appendChild(access);
+    topbar.appendChild(topbarTools);
+    shell.appendChild(topbar);
+
+    var shareActions = make("nav", "cp-share-actions");
+    shareActions.setAttribute("aria-label", "Folder actions");
+    var downloadAll = linkButton("Download all", withQuery(location.href, "zip"), "cp-button cp-primary", "download");
+    shareActions.appendChild(downloadAll);
+
+    if (canWrite(data) && document.getElementById("op_mkdir")) {
+      var mkdir = button("New folder", "cp-button cp-quiet", "folder");
+      mkdir.addEventListener("click", openFolderCreator);
+      shareActions.appendChild(mkdir);
+    }
+
+    shell.appendChild(shareActions);
+
+    if (canWrite(data)) shell.appendChild(buildUploadSection());
+
+    var content = make("section", "cp-content");
+    var heading = make("h2", "cp-sr-only", "Files and folders");
+    heading.id = "cp-content-title";
+    content.appendChild(heading);
 
     var listing = make("div", "cp-listing");
     listing.id = "cp-listing";
     listing.setAttribute("aria-labelledby", "cp-content-title");
     content.appendChild(listing);
     shell.appendChild(content);
-
-    var footer = make("footer", "cp-footer");
-    footer.appendChild(make("span", null, "Delivered securely by " + (data.srvinf || "AVideo")));
-    var native = make("a", null, "Open full file manager");
-    native.href = location.pathname + "?fullui";
-    footer.appendChild(native);
-    shell.appendChild(footer);
 
     var live = make("p", "cp-sr-only");
     live.id = "cp-live-status";
@@ -302,8 +264,7 @@
     var summary = make("summary");
     summary.appendChild(icon("upload"));
     var copy = make("span");
-    copy.appendChild(make("strong", null, "Upload activity"));
-    copy.appendChild(make("small", null, "Progress, confirmations and completed files"));
+    copy.appendChild(make("strong", null, "Upload"));
     summary.appendChild(copy);
     summary.appendChild(icon("chevron"));
     details.appendChild(summary);
@@ -313,12 +274,18 @@
     dropzone.appendChild(icon("upload"));
     var dropCopy = make("span");
     dropCopy.appendChild(make("strong", null, "Choose files or drop them here"));
-    dropCopy.appendChild(make("small", null, "Large uploads can resume if the connection drops"));
     dropzone.appendChild(dropCopy);
     dropzone.addEventListener("click", function () {
       openUploader(true);
     });
     details.appendChild(dropzone);
+
+    var parallel = make("div", "cp-parallel-control");
+    parallel.appendChild(make("span", null, "Parallel uploads"));
+    var parallelNative = make("div", "cp-parallel-native");
+    parallelNative.id = "cp-parallel-native";
+    parallel.appendChild(parallelNative);
+    details.appendChild(parallel);
 
     var host = make("div", "cp-native-upload-host");
     host.id = "cp-native-upload-host";
@@ -331,6 +298,11 @@
     var uploadPanel = document.getElementById("op_up2k");
     if (uploadHost && uploadPanel) {
       uploadHost.appendChild(uploadPanel);
+      var parallelNative = document.getElementById("cp-parallel-native");
+      ["nthread_sub", "nthread", "nthread_add"].forEach(function (id) {
+        var control = document.getElementById(id);
+        if (parallelNative && control) parallelNative.appendChild(control);
+      });
       state.uploaderMounted = true;
       observeUploader(uploadPanel);
     }
@@ -674,7 +646,11 @@
   }
 
   function init() {
-    if (!isSharePath(location.pathname) || wantsNativeBrowser(location.search)) return;
+    if (
+      !isSharePath(location.pathname) ||
+      wantsNativeBrowser(location.search, location.hash, window.sloc0, window.fullui)
+    )
+      return;
     fetchListing()
       .then(function (data) {
         state.data = data;

@@ -1,0 +1,11 @@
+{
+  "name": "copyparty-client-ui",
+  "version": "2.0.0",
+  "private": true,
+  "description": "AVideo client-facing UI for Copyparty share links",
+  "scripts": {
+    "check": "node --check ui-assets/client-browser-ui.js && node --test tests/core.test.cjs",
+    "test": "npm run check",
+    "fixture": "node scripts/fixture-server.mjs"
+  }
+}

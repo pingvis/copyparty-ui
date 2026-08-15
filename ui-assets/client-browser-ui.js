@@ -1,885 +1,707 @@
 (function () {
   "use strict";
 
-  var BROWSER_PATH_PATTERNS = [/^\/shr\//];
-  var DROPBOX_HOSTNAMES = ["files.avideo.lt"];
-  var DROPBOX_PATH_PATTERNS = [/^\/share\/?$/];
+  var SHARE_PATH = /^\/shr\//;
+  var THUMBABLE = /\.(?:avif|bmp|gif|heic|heif|jpe?g|jxl|mkv|mov|mp4|mpeg|mpg|pdf|png|raw|svg|tif?f|webm|webp)$/i;
+  var state = {
+    data: null,
+    listing: null,
+    refreshTimer: 0,
+    refreshBusy: false,
+    refreshQueued: false,
+    uploaderMounted: false
+  };
 
-  function matchesPatterns(patterns) {
-    return patterns.some(function (re) {
-      return re.test(location.pathname);
-    });
+  function isSharePath(pathname) {
+    return SHARE_PATH.test(pathname || "");
   }
 
-  function pageMode() {
-    if (
-      DROPBOX_HOSTNAMES.indexOf(location.hostname) !== -1 &&
-      matchesPatterns(DROPBOX_PATH_PATTERNS)
-    ) {
-      return "dropbox";
-    }
-    if (matchesPatterns(BROWSER_PATH_PATTERNS)) return "browser";
-    return "";
-  }
-
-  function matchesPath() {
-    return !!pageMode();
-  }
-
-  function wantsNativeBrowser() {
+  function wantsNativeBrowser(search) {
     try {
-      return new URLSearchParams(location.search).has("v");
+      var params = new URLSearchParams(search || "");
+      return params.has("v") || params.has("fullui");
     } catch (err) {
-      return /^\?v(?:[=&]|$)/.test(location.search || "");
+      return /(?:^|[?&])(?:v|fullui)(?:[=&]|$)/.test(search || "");
     }
   }
 
-  function text(node) {
-    return (node && node.textContent ? node.textContent : "").replace(/\s+/g, " ").trim();
+  function listingUrl(href) {
+    var url = new URL(href);
+    url.searchParams.delete("v");
+    url.searchParams.delete("fullui");
+    url.searchParams.set("ls", "");
+    return url.href;
   }
 
-  function cleanPathText(pathText) {
-    return (pathText || "").replace(/^🌲/, "").trim();
+  function withQuery(href, key) {
+    var url = new URL(href, href);
+    url.searchParams.delete("v");
+    url.searchParams.delete("fullui");
+    url.searchParams.delete("ls");
+    url.searchParams.set(key, "");
+    return url.href;
   }
 
-  function formatPathTitle(pathText) {
-    return cleanPathText(pathText).replace(/\//g, " / ").trim();
-  }
-
-  function pathLinkSegments(pathNode) {
-    if (!pathNode) return [];
-
-    return Array.from(pathNode.querySelectorAll("a"))
-      .map(function (link) {
-        return text(link);
-      })
-      .filter(function (part) {
-        return part && part !== "/" && part !== "🌲";
-      });
-  }
-
-  function pathSegments(pathText) {
-    return cleanPathText(pathText)
-      .split("/")
-      .map(function (part) {
-        return part.trim();
-      })
-      .filter(Boolean);
-  }
-
-  function isShareRoot(pathText) {
-    var segments = pathSegments(pathText);
-    if (!segments.length) return true;
-
-    if ((segments[0] || "").toLowerCase() === "shr") {
-      return segments.length <= 2;
+  function safeDecode(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch (err) {
+      return value;
     }
-
-    return segments.length <= 1;
   }
 
-  function pickHeroTitle(pathText, shareRootName, pathNode) {
-    if (shareRootName) return shareRootName;
-
-    var linkSegments = pathLinkSegments(pathNode);
-    if (linkSegments.length) {
-      if ((linkSegments[0] || "").toLowerCase() === "shr") {
-        return linkSegments[linkSegments.length - 1] || "Shared Folder";
-      }
-
-      return linkSegments[linkSegments.length - 1] || "Downloads";
-    }
-
-    var segments = pathSegments(pathText);
-    if (!segments.length) return "Downloads";
-
-    if ((segments[0] || "").toLowerCase() === "shr") {
-      var sharedPath = segments.slice(2);
-      return sharedPath.length ? sharedPath[sharedPath.length - 1] : "Shared Folder";
-    }
-
-    return segments[segments.length - 1] || formatPathTitle(pathText) || "Downloads";
+  function entryName(href) {
+    var clean = String(href || "").replace(/[?#].*$/, "").replace(/\/$/, "");
+    var bits = clean.split("/");
+    return safeDecode(bits[bits.length - 1] || clean);
   }
 
-  function looksLikeEchoRoot(entry, hasFiles) {
-    return (
-      hasFiles &&
-      entry.isFolder &&
-      /^0(?:\s*B)?$/i.test(entry.size || "0") &&
-      (!entry.files || entry.files === "---") &&
-      /^zip$/i.test(entry.kind || "")
-    );
+  function formatBytes(value) {
+    var bytes = Number(value || 0);
+    if (!isFinite(bytes) || bytes < 0) return "—";
+    if (bytes < 1024) return bytes + " B";
+
+    var units = ["KB", "MB", "GB", "TB", "PB"];
+    var size = bytes;
+    var unit = -1;
+    do {
+      size /= 1024;
+      unit += 1;
+    } while (size >= 1024 && unit < units.length - 1);
+
+    var digits = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+    return size.toFixed(digits).replace(/\.0+$/, "").replace(/(\.[0-9])0$/, "$1") + " " + units[unit];
+  }
+
+  function formatDate(timestamp) {
+    var value = Number(timestamp || 0);
+    if (!value) return "";
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(new Date(value * 1000));
+    } catch (err) {
+      return new Date(value * 1000).toLocaleString();
+    }
   }
 
   function make(tag, className, textContent) {
-    var el = document.createElement(tag);
-    if (className) el.className = className;
-    if (textContent) el.textContent = textContent;
-    return el;
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (textContent !== undefined && textContent !== null) node.textContent = textContent;
+    return node;
   }
 
-  function thumbUrl(href) {
-    if (!href || href.charAt(0) === "#") return "";
-    return href + (href.indexOf("?") === -1 ? "?" : "&") + "th=wf&cache=i&raster";
-  }
-
-  function thumbIconUrl(href) {
-    if (!href || href.charAt(0) === "#") return "";
-    return href + (href.indexOf("?") === -1 ? "?" : "&") + "th=w&cache=i&raster";
-  }
-
-  function shouldUseBlobThumbFallback() {
-    var ua = navigator.userAgent || "";
-    return !!(
-      window.fetch &&
-      window.URL &&
-      typeof URL.createObjectURL === "function" &&
-      (/(?:iPad|iPhone|iPod)/.test(ua) ||
-        (/AppleWebKit/i.test(ua) &&
-          /Mobile/i.test(ua) &&
-          !/(?:CriOS|FxiOS|EdgiOS|OPiOS)/.test(ua)))
-    );
-  }
-
-  function fetchThumbObjectUrl(url) {
-    return fetch(url, { credentials: "same-origin" })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("thumb " + response.status);
-        }
-        return response.blob();
-      })
-      .then(function (blob) {
-        if (!blob || !blob.size) {
-          throw new Error("empty thumb");
-        }
-        return URL.createObjectURL(blob);
-      });
-  }
-
-  function thumbFallbackLabel(name) {
-    var match = /\.([a-z0-9]{1,8})(?:[?#].*)?$/i.exec(name || "");
-    return match ? match[1].toUpperCase() : "FILE";
-  }
-
-  function applyThumbFallback(thumbWrap, thumbLink, thumb, entryName) {
-    if (thumb && thumb.parentNode) {
-      thumb.parentNode.removeChild(thumb);
-    }
-
-    thumbWrap.classList.add("is-fallback");
-    thumbWrap.setAttribute("data-ext", thumbFallbackLabel(entryName));
-    thumbLink.classList.add("is-fallback");
-  }
-
-  function attachThumbLoader(thumb, thumbWrap, thumbLink, entry) {
-    var candidates = [{ url: thumbUrl(entry.href), blob: false }];
-    if (shouldUseBlobThumbFallback()) {
-      candidates.push({ url: thumbUrl(entry.href), blob: true });
-    }
-    candidates.push({ url: thumbIconUrl(entry.href), blob: false });
-
-    var candidateIndex = 0;
-    var activeBlobUrl = "";
-    var requestId = 0;
-
-    function cleanupBlobUrl() {
-      if (!activeBlobUrl || !window.URL || typeof URL.revokeObjectURL !== "function") {
-        return;
-      }
-
-      try {
-        URL.revokeObjectURL(activeBlobUrl);
-      } catch (ex) {
-        // ignore stale blob revocation failures
-      }
-      activeBlobUrl = "";
-    }
-
-    function finalizeFallback() {
-      cleanupBlobUrl();
-      applyThumbFallback(thumbWrap, thumbLink, thumb, entry.name);
-    }
-
-    function loadCandidate(index) {
-      var candidate = candidates[index];
-      if (!candidate || !candidate.url) {
-        finalizeFallback();
-        return;
-      }
-
-      cleanupBlobUrl();
-
-      if (candidate.blob) {
-        var thisRequest = ++requestId;
-        fetchThumbObjectUrl(candidate.url)
-          .then(function (objectUrl) {
-            if (thisRequest !== requestId) {
-              if (window.URL && typeof URL.revokeObjectURL === "function") {
-                URL.revokeObjectURL(objectUrl);
-              }
-              return;
-            }
-
-            activeBlobUrl = objectUrl;
-            thumb.src = objectUrl;
-          })
-          .catch(function () {
-            if (thisRequest !== requestId) return;
-            candidateIndex += 1;
-            loadCandidate(candidateIndex);
-          });
-        return;
-      }
-
-      thumb.src = candidate.url;
-    }
-
-    thumb.addEventListener("load", function () {
-      thumbWrap.classList.remove("is-fallback");
-      thumbWrap.removeAttribute("data-ext");
-      thumbLink.classList.remove("is-fallback");
-    });
-
-    thumb.addEventListener("error", function () {
-      candidateIndex += 1;
-      loadCandidate(candidateIndex);
-    });
-
-    loadCandidate(candidateIndex);
-  }
-
-  function pickIndices(table) {
-    var headers = Array.from(table.querySelectorAll("thead th")).map(function (node) {
-      return text(node).replace(/^[^a-z0-9]+/i, "").toLowerCase();
-    });
-    var find = function (name) {
-      return headers.findIndex(function (value) {
-        return value === name;
-      });
+  function icon(name) {
+    var icons = {
+      arrow: "M5 12h14M13 6l6 6-6 6",
+      chevron: "m9 18 6-6-6-6",
+      download: "M12 3v12m0 0 4-4m-4 4-4-4M5 21h14",
+      folder: "M3 7h6l2 2h10v10H3z",
+      grid: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+      refresh: "M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7",
+      upload: "M12 21V9m0 0-4 4m4-4 4 4M5 4h14",
+      x: "M6 6l12 12M18 6 6 18"
     };
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", icons[name] || icons.grid);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.8");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(path);
+    return svg;
+  }
 
+  function button(label, className, iconName) {
+    var node = make("button", className || "cp-button");
+    node.type = "button";
+    if (iconName) node.appendChild(icon(iconName));
+    node.appendChild(make("span", null, label));
+    return node;
+  }
+
+  function linkButton(label, href, className, iconName) {
+    var node = make("a", className || "cp-button");
+    node.href = href;
+    if (iconName) node.appendChild(icon(iconName));
+    node.appendChild(make("span", null, label));
+    return node;
+  }
+
+  function shareContext(pathname) {
+    var raw = String(pathname || "").split("/").filter(Boolean);
+    var token = raw.length > 1 ? raw[1] : "";
+    var folders = raw.slice(2);
     return {
-      name: find("file name"),
-      size: find("size"),
-      files: find("files"),
-      date: find("date")
+      token: token,
+      folders: folders,
+      root: "/shr/" + token + "/",
+      title: folders.length ? safeDecode(folders[folders.length - 1]) : "Shared files"
     };
   }
 
-  function canUpload() {
-    var perms = Array.isArray(window.perms) ? window.perms : [];
-    return perms.indexOf("write") !== -1;
-  }
+  function buildBreadcrumbs(context) {
+    var nav = make("nav", "cp-breadcrumbs");
+    nav.setAttribute("aria-label", "Folder path");
 
-  var suppressRefreshUntil = 0;
+    var root = make("a", null, "Shared files");
+    root.href = context.root;
+    nav.appendChild(root);
 
-  function delayActiveTabRefresh(ms) {
-    suppressRefreshUntil = Math.max(suppressRefreshUntil, Date.now() + (ms || 0));
-  }
-
-  function findIndexedUploadInput(prefix) {
-    var index = Number(window.fdom_ctr || 0);
-    if (index > 0) {
-      var indexed = document.getElementById(prefix + index);
-      if (indexed) {
-        return indexed;
-      }
-    }
-
-    var inputs = Array.prototype.slice.call(
-      document.querySelectorAll("#op_up2k input[type=file]")
-    ).filter(function (input) {
-      var isFolder = !!input.webkitdirectory;
-      return prefix === "dir" ? isFolder : !isFolder;
-    });
-
-    return inputs.length ? inputs[inputs.length - 1] : null;
-  }
-
-  function findNativeUploadInput() {
-    return (
-      findIndexedUploadInput("file") ||
-      document.getElementById("file1") ||
-      document.querySelector("input[type=file][name='file1[]']")
-    );
-  }
-
-  function primeUploadContext() {
-    if (typeof window.start_actx === "function") {
-      window.start_actx();
-    }
-  }
-
-  function findNativeFolderUploadInput() {
-    return (
-      findIndexedUploadInput("dir") ||
-      document.getElementById("dir1") ||
-      document.querySelector("input[type=file][name='dir1[]'][webkitdirectory]")
-    );
-  }
-
-  function openNativeUploadPicker(uploadLink) {
-    delayActiveTabRefresh(15000);
-    primeUploadContext();
-
-    var input = findNativeUploadInput();
-    if (input && typeof input.click === "function") {
-      input.click();
-      return true;
-    }
-
-    if (uploadLink && typeof uploadLink.click === "function") {
-      uploadLink.click();
-      return true;
-    }
-
-    return false;
-  }
-
-  function openNativeFolderPicker(uploadLink) {
-    delayActiveTabRefresh(15000);
-    primeUploadContext();
-
-    var input = findNativeFolderUploadInput();
-    if (input && typeof input.click === "function") {
-      input.click();
-      return true;
-    }
-
-    if (uploadLink && typeof uploadLink.click === "function") {
-      uploadLink.click();
-      return true;
-    }
-
-    return false;
-  }
-
-  function findNativeMkdirPanel() {
-    return document.getElementById("op_mkdir");
-  }
-
-  function findNativeMkdirLauncher() {
-    return document.getElementById("opa_mkd");
-  }
-
-  function closeNativeFolderCreator() {
-    var closeLink = document.getElementById("opa_x");
-    if (closeLink && typeof closeLink.click === "function") {
-      closeLink.click();
-    }
-
-    var panel = findNativeMkdirPanel();
-    if (panel) {
-      panel.classList.remove("act");
-    }
-
-    var modal = document.getElementById("cp-mkdir-modal");
-    if (modal) {
-      modal.setAttribute("aria-hidden", "true");
-    }
-
-    document.body.classList.remove("cp-mkdir-open");
-  }
-
-  function openNativeFolderCreator() {
-    var panel = findNativeMkdirPanel();
-    if (!panel) return false;
-
-    var launcher = findNativeMkdirLauncher();
-    if (launcher && typeof launcher.click === "function") {
-      launcher.click();
-    } else {
-      panel.classList.add("act");
-    }
-
-    var modal = document.getElementById("cp-mkdir-modal");
-    if (modal) {
-      modal.setAttribute("aria-hidden", "false");
-    }
-
-    document.body.classList.add("cp-mkdir-open");
-
-    window.setTimeout(function () {
-      var input = panel.querySelector('input[name="name"]');
-      if (input && typeof input.focus === "function") {
-        input.focus();
-        if (typeof input.select === "function") input.select();
-      }
-    }, 0);
-
-    return true;
-  }
-
-  function enableActiveTabRefresh() {
-    var refreshArmed = false;
-
-    document.addEventListener("visibilitychange", function () {
-      if (Date.now() < suppressRefreshUntil) {
-        refreshArmed = false;
-        return;
-      }
-
-      if (document.hidden) {
-        refreshArmed = true;
-        return;
-      }
-
-      if (refreshArmed) {
-        location.reload();
+    var path = context.root;
+    context.folders.forEach(function (segment, index) {
+      nav.appendChild(icon("chevron"));
+      path += segment + "/";
+      if (index === context.folders.length - 1) {
+        var current = make("span", null, safeDecode(segment));
+        current.setAttribute("aria-current", "page");
+        nav.appendChild(current);
+      } else {
+        var crumb = make("a", null, safeDecode(segment));
+        crumb.href = path;
+        nav.appendChild(crumb);
       }
     });
+
+    return nav;
   }
 
-  function buildHero(zipLink, titleText, titleTooltip, uploadLink, mkdirLink) {
-    var hero = make("section", null);
-    hero.id = "client-hero";
-    var heroTitle = make("h1", null, titleText);
+  function parentHref(context) {
+    if (!context.folders.length) return "";
+    var parent = context.folders.slice(0, -1).join("/");
+    return context.root + (parent ? parent + "/" : "");
+  }
 
-    hero.appendChild(make("p", "cp-kicker", "Shared Download"));
-    heroTitle.title = titleTooltip || titleText;
-    hero.appendChild(heroTitle);
+  function canWrite(data) {
+    return !!(data && Array.isArray(data.perms) && data.perms.indexOf("write") !== -1);
+  }
 
-    var actions = make("div", "cp-actions");
-    if (zipLink) {
-      var btn = make("a", "cp-btn primary", "Download Everything");
-      btn.href = zipLink.getAttribute("href");
-      actions.appendChild(btn);
-    }
+  function createShell(data) {
+    var context = shareContext(location.pathname);
+    var shell = make("main", "cp-shell");
+    shell.id = "cp-client-shell";
 
-    if (uploadLink && canUpload()) {
-      var up = make("button", "cp-btn", "Upload Files");
-      up.type = "button";
-      up.addEventListener("click", function (event) {
-        event.preventDefault();
+    var topbar = make("header", "cp-topbar");
+    var brand = make("a", "cp-brand");
+    brand.href = context.root;
+    brand.setAttribute("aria-label", "AVideo shared files home");
+    brand.appendChild(make("span", "cp-brand-mark", "A"));
+    var brandWords = make("span", "cp-brand-words");
+    brandWords.appendChild(make("strong", null, data.srvinf || "AVideo"));
+    brandWords.appendChild(make("small", null, "Client delivery"));
+    brand.appendChild(brandWords);
+    topbar.appendChild(brand);
 
-        if (!openNativeUploadPicker(uploadLink)) {
-          location.href = location.pathname + "?v=up2k";
-        }
+    var access = make("span", "cp-access " + (canWrite(data) ? "is-write" : "is-read"));
+    access.appendChild(make("i"));
+    access.appendChild(make("span", null, canWrite(data) ? "Uploads enabled" : "View only"));
+    topbar.appendChild(access);
+    shell.appendChild(topbar);
+
+    var hero = make("section", "cp-hero");
+    var heroCopy = make("div", "cp-hero-copy");
+    heroCopy.appendChild(buildBreadcrumbs(context));
+    heroCopy.appendChild(make("p", "cp-eyebrow", context.folders.length ? "Folder" : "Secure file delivery"));
+    var title = make("h1", null, context.title);
+    title.title = context.title;
+    heroCopy.appendChild(title);
+    heroCopy.appendChild(
+      make(
+        "p",
+        "cp-hero-note",
+        canWrite(data)
+          ? "Download what you need or add files to this shared space."
+          : "Everything here is ready to preview or download."
+      )
+    );
+    hero.appendChild(heroCopy);
+
+    var heroActions = make("div", "cp-hero-actions");
+    if (canWrite(data)) {
+      var upload = button("Upload files", "cp-button cp-primary", "upload");
+      upload.addEventListener("click", function () {
+        openUploader(true);
       });
-      actions.appendChild(up);
+      heroActions.appendChild(upload);
     }
 
-    if (mkdirLink && canUpload()) {
-      var mkdirBtn = make("button", "cp-btn", "New Folder");
-      mkdirBtn.type = "button";
-      mkdirBtn.addEventListener("click", function (event) {
-        event.preventDefault();
-        openNativeFolderCreator();
-      });
-      actions.appendChild(mkdirBtn);
+    var downloadAll = linkButton("Download all", withQuery(location.href, "zip"), "cp-button cp-secondary", "download");
+    heroActions.appendChild(downloadAll);
+
+    var parent = parentHref(context);
+    if (parent) {
+      var up = linkButton("Back", parent, "cp-button cp-quiet", "arrow");
+      up.classList.add("cp-back");
+      heroActions.appendChild(up);
     }
 
-    hero.appendChild(actions);
-    return hero;
+    if (canWrite(data) && document.getElementById("op_mkdir")) {
+      var mkdir = button("New folder", "cp-button cp-quiet", "folder");
+      mkdir.addEventListener("click", openFolderCreator);
+      heroActions.appendChild(mkdir);
+    }
+
+    hero.appendChild(heroActions);
+    shell.appendChild(hero);
+
+    if (canWrite(data)) shell.appendChild(buildUploadSection());
+
+    var content = make("section", "cp-content");
+    var contentHead = make("div", "cp-content-head");
+    var headingWrap = make("div");
+    headingWrap.appendChild(make("p", "cp-eyebrow", "Contents"));
+    var heading = make("h2", null, "Files and folders");
+    heading.id = "cp-content-title";
+    headingWrap.appendChild(heading);
+    contentHead.appendChild(headingWrap);
+
+    var refresh = button("Refresh", "cp-icon-button", "refresh");
+    refresh.setAttribute("aria-label", "Refresh file list");
+    refresh.addEventListener("click", function () {
+      refreshListing(true);
+    });
+    contentHead.appendChild(refresh);
+    content.appendChild(contentHead);
+
+    var listing = make("div", "cp-listing");
+    listing.id = "cp-listing";
+    listing.setAttribute("aria-labelledby", "cp-content-title");
+    content.appendChild(listing);
+    shell.appendChild(content);
+
+    var footer = make("footer", "cp-footer");
+    footer.appendChild(make("span", null, "Delivered securely by " + (data.srvinf || "AVideo")));
+    var native = make("a", null, "Open full file manager");
+    native.href = location.pathname + "?fullui";
+    footer.appendChild(native);
+    shell.appendChild(footer);
+
+    var live = make("p", "cp-sr-only");
+    live.id = "cp-live-status";
+    live.setAttribute("aria-live", "polite");
+    shell.appendChild(live);
+
+    document.body.insertBefore(shell, document.body.firstChild);
+    mountNativePanels(shell);
+    return shell;
   }
 
-  function buildDropboxHero(titleText, titleTooltip) {
-    var hero = make("section", null);
-    hero.id = "client-hero";
-    var heroTitle = make("h1", null, titleText);
+  function buildUploadSection() {
+    var details = make("details", "cp-upload-panel");
+    details.id = "cp-upload-panel";
+    var summary = make("summary");
+    summary.appendChild(icon("upload"));
+    var copy = make("span");
+    copy.appendChild(make("strong", null, "Upload activity"));
+    copy.appendChild(make("small", null, "Progress, confirmations and completed files"));
+    summary.appendChild(copy);
+    summary.appendChild(icon("chevron"));
+    details.appendChild(summary);
 
-    hero.appendChild(make("p", "cp-kicker", "Secure Upload"));
-    heroTitle.title = titleTooltip || titleText;
-    hero.appendChild(heroTitle);
-    return hero;
+    var dropzone = make("button", "cp-dropzone");
+    dropzone.type = "button";
+    dropzone.appendChild(icon("upload"));
+    var dropCopy = make("span");
+    dropCopy.appendChild(make("strong", null, "Choose files or drop them here"));
+    dropCopy.appendChild(make("small", null, "Large uploads can resume if the connection drops"));
+    dropzone.appendChild(dropCopy);
+    dropzone.addEventListener("click", function () {
+      openUploader(true);
+    });
+    details.appendChild(dropzone);
+
+    var host = make("div", "cp-native-upload-host");
+    host.id = "cp-native-upload-host";
+    details.appendChild(host);
+    return details;
   }
 
-  function mountNativeFolderCreator(shell) {
-    var panel = findNativeMkdirPanel();
-    if (!panel) return;
+  function mountNativePanels(shell) {
+    var uploadHost = document.getElementById("cp-native-upload-host");
+    var uploadPanel = document.getElementById("op_up2k");
+    if (uploadHost && uploadPanel) {
+      uploadHost.appendChild(uploadPanel);
+      state.uploaderMounted = true;
+      observeUploader(uploadPanel);
+    }
 
-    var modal = document.getElementById("cp-mkdir-modal");
-    var dialog;
-    var host;
-
-    if (!modal) {
-      modal = make("section", null);
+    var mkdirPanel = document.getElementById("op_mkdir");
+    if (mkdirPanel) {
+      var modal = make("section", "cp-mkdir-modal");
       modal.id = "cp-mkdir-modal";
       modal.setAttribute("aria-hidden", "true");
-
-      var backdrop = make("button", "cp-mkdir-backdrop");
+      var backdrop = make("button", "cp-modal-backdrop");
       backdrop.type = "button";
       backdrop.setAttribute("aria-label", "Close new folder dialog");
-      backdrop.addEventListener("click", function () {
-        closeNativeFolderCreator();
-      });
+      backdrop.addEventListener("click", closeFolderCreator);
+      modal.appendChild(backdrop);
 
-      dialog = make("div", "cp-mkdir-dialog");
+      var dialog = make("div", "cp-mkdir-dialog");
       dialog.setAttribute("role", "dialog");
       dialog.setAttribute("aria-modal", "true");
       dialog.setAttribute("aria-labelledby", "cp-mkdir-title");
-
-      var header = make("div", "cp-mkdir-header");
-      var title = make("h2", null, "Create Folder");
+      var head = make("header");
+      var title = make("h2", null, "Create a folder");
       title.id = "cp-mkdir-title";
-      var closeBtn = make("button", "cp-mkdir-close", "Close");
-      closeBtn.type = "button";
-      closeBtn.addEventListener("click", function () {
-        closeNativeFolderCreator();
-      });
-
-      header.appendChild(title);
-      header.appendChild(closeBtn);
-
-      host = make("div", "cp-mkdir-host");
-
-      dialog.appendChild(header);
-      dialog.appendChild(host);
-      modal.appendChild(backdrop);
+      head.appendChild(title);
+      var close = button("Close", "cp-icon-button", "x");
+      close.setAttribute("aria-label", "Close new folder dialog");
+      close.addEventListener("click", closeFolderCreator);
+      head.appendChild(close);
+      dialog.appendChild(head);
+      dialog.appendChild(mkdirPanel);
       modal.appendChild(dialog);
       shell.appendChild(modal);
 
-      document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape" && document.body.classList.contains("cp-mkdir-open")) {
-          closeNativeFolderCreator();
-        }
-      });
-    } else {
-      dialog = modal.querySelector(".cp-mkdir-dialog");
-      host = modal.querySelector(".cp-mkdir-host");
-    }
-
-    if (host && panel.parentNode !== host) {
-      host.appendChild(panel);
-    }
-
-    var form = panel.querySelector("form");
-    if (form && !form.dataset.cpSimpleBrowserBound) {
-      form.dataset.cpSimpleBrowserBound = "1";
-      form.addEventListener("submit", function () {
-        delayActiveTabRefresh(15000);
-      });
-    }
-
-    var submit = panel.querySelector('input[type="submit"]');
-    if (submit) {
-      submit.value = "Create";
-    }
-  }
-
-  function mountSimpleShell(hero, cards, table, path, accInfo) {
-    var shell = document.getElementById("cp-simple-shell");
-    if (!shell) {
-      shell = make("main", null);
-      shell.id = "cp-simple-shell";
-      document.body.insertBefore(shell, document.body.firstChild);
-    }
-
-    var helpers = document.getElementById("cp-native-helpers");
-    if (!helpers) {
-      helpers = make("div", "cp-native-helpers");
-      helpers.id = "cp-native-helpers";
-      helpers.setAttribute("aria-hidden", "true");
-    }
-
-    shell.textContent = "";
-    shell.appendChild(hero);
-    shell.appendChild(cards);
-    if (accInfo) shell.appendChild(accInfo);
-    shell.appendChild(helpers);
-
-    if (table) helpers.appendChild(table);
-    if (path) helpers.appendChild(path);
-
-    var uploadPanel = document.getElementById("op_up2k");
-    if (uploadPanel) helpers.appendChild(uploadPanel);
-
-    mountNativeFolderCreator(shell);
-  }
-
-  function normalizeDropboxLifetime() {
-    var life = document.getElementById("u2life");
-    if (!life || life.dataset.cpDropboxReady) return;
-
-    var minutes = document.getElementById("lifem");
-    var hours = document.getElementById("lifeh");
-    if (!minutes || !hours) return;
-
-    var expires = document.getElementById("lifew");
-    var undo = document.getElementById("undor");
-
-    var fields = make("div", "cp-life-fields");
-    fields.appendChild(make("span", null, "autodelete after"));
-    fields.appendChild(minutes);
-    fields.appendChild(make("span", null, "min"));
-    fields.appendChild(make("span", "cp-life-divider", "or"));
-    fields.appendChild(hours);
-    fields.appendChild(make("span", null, "hours"));
-
-    life.textContent = "";
-    life.appendChild(fields);
-
-    if (expires) {
-      var expiresRow = make("div", "cp-life-row");
-      expiresRow.appendChild(document.createTextNode("upload will be deleted "));
-      expiresRow.appendChild(expires);
-      life.appendChild(expiresRow);
-    }
-
-    if (undo) {
-      life.appendChild(undo);
-    }
-
-    life.dataset.cpDropboxReady = "1";
-  }
-
-  function buildDropboxAction(textContent, primary, onActivate) {
-    var button = make("button", "cp-dropbox-btn" + (primary ? " primary" : ""), textContent);
-    button.type = "button";
-    button.addEventListener("click", function (event) {
-      event.preventDefault();
-      onActivate();
-    });
-    return button;
-  }
-
-  function buildDropboxPanel(uploadLink) {
-    var uploadPanel = document.getElementById("op_up2k");
-    if (!uploadPanel) return null;
-
-    var panel = make("section", null);
-    panel.id = "cp-dropbox-panel";
-
-    var actions = make("div", "cp-dropbox-actions");
-    var hasAction = false;
-
-    if (canUpload()) {
-      var fileInput = document.getElementById("file1");
-      if (fileInput) {
-        actions.appendChild(
-          buildDropboxAction("Choose Files", true, function () {
-            openNativeUploadPicker(uploadLink);
-          })
-        );
-        hasAction = true;
-      } else if (uploadLink) {
-        var fileBtn = make("button", "cp-dropbox-btn primary", "Choose Files");
-        fileBtn.type = "button";
-        fileBtn.addEventListener("click", function (event) {
-          event.preventDefault();
-          if (!openNativeUploadPicker(uploadLink)) {
-            location.href = location.pathname + "?v=up2k";
-          }
+      var form = mkdirPanel.querySelector("form");
+      if (form) {
+        form.addEventListener("submit", function () {
+          setTimeout(function () {
+            closeFolderCreator();
+            refreshListing(true);
+          }, 900);
         });
-        actions.appendChild(fileBtn);
-        hasAction = true;
-      }
-
-      var folderInput = document.getElementById("dir1");
-      if (folderInput) {
-        actions.appendChild(
-          buildDropboxAction("Choose Folder", false, function () {
-            openNativeFolderPicker(uploadLink);
-          })
-        );
-        hasAction = true;
-      } else if (uploadLink) {
-        var folderBtn = make("button", "cp-dropbox-btn", "Choose Folder");
-        folderBtn.type = "button";
-        folderBtn.addEventListener("click", function (event) {
-          event.preventDefault();
-          if (!openNativeFolderPicker(uploadLink)) {
-            location.href = location.pathname + "?v=up2k";
-          }
-        });
-        actions.appendChild(folderBtn);
-        hasAction = true;
       }
     }
 
-    if (hasAction) {
-      panel.appendChild(actions);
-    }
-
-    panel.appendChild(uploadPanel);
-
-    return panel;
-  }
-
-  function mountDropboxShell(hero, dropboxPanel, table, path, accInfo) {
-    var shell = document.getElementById("cp-simple-shell");
-    if (!shell) {
-      shell = make("main", null);
-      shell.id = "cp-simple-shell";
-      document.body.insertBefore(shell, document.body.firstChild);
-    }
-
-    var helpers = document.getElementById("cp-native-helpers");
-    if (!helpers) {
-      helpers = make("div", "cp-native-helpers");
-      helpers.id = "cp-native-helpers";
-      helpers.setAttribute("aria-hidden", "true");
-    }
-
-    shell.textContent = "";
-    shell.appendChild(hero);
-    shell.appendChild(dropboxPanel);
-    if (accInfo) shell.appendChild(accInfo);
-    shell.appendChild(helpers);
-
-    if (table) helpers.appendChild(table);
-    if (path) helpers.appendChild(path);
-  }
-
-  function buildCards(table, pathText) {
-    var idx = pickIndices(table);
-    if (idx.name < 0) return null;
-
-    var body = table.tBodies[0];
-    if (!body) return null;
-
-    var wrap = make("section", null);
-    wrap.id = "client-file-cards";
-
-    var entries = Array.from(body.rows)
-      .map(function (row) {
-        if (!row.cells || row.cells.length <= idx.name) return null;
-
-        var primaryLink = row.cells[idx.name].querySelector("a");
-        if (!primaryLink) return null;
-
-        var kindCell = row.cells[0] ? text(row.cells[0]) : "";
-        return {
-          kind: kindCell,
-          isFolder: kindCell.indexOf("DIR") !== -1 || /\/$/.test(text(primaryLink)),
-          href: primaryLink.getAttribute("href"),
-          name: text(primaryLink).replace(/\/$/, ""),
-          size: idx.size >= 0 && row.cells[idx.size] ? text(row.cells[idx.size]) : "",
-          files: idx.files >= 0 && row.cells[idx.files] ? text(row.cells[idx.files]) : "",
-          date: idx.date >= 0 && row.cells[idx.date] ? text(row.cells[idx.date]) : ""
-        };
-      })
-      .filter(Boolean);
-
-    var shareRootName = "";
-    if (isShareRoot(pathText)) {
-      var hasFiles = entries.some(function (entry) {
-        return !entry.isFolder;
-      });
-
-      entries = entries.filter(function (entry) {
-        var isEchoFolder = looksLikeEchoRoot(entry, hasFiles);
-
-        if (isEchoFolder && !shareRootName) {
-          shareRootName = entry.name;
-        }
-
-        return !isEchoFolder;
-      });
-    }
-
-    entries.forEach(function (entry) {
-      var cardClass = "cp-file-card" + (entry.isFolder ? " is-folder" : " has-thumb");
-      var card = make("article", cardClass);
-      var top = make("div", "cp-file-top");
-      var bodyWrap = make("div", "cp-file-body");
-      var main = make("div", "cp-file-main");
-      var actions = make("div", "cp-file-actions");
-
-      if (!entry.isFolder) {
-        var thumbWrap = make("div", "cp-file-thumb-wrap");
-        var thumbLink = make("a", "cp-file-thumb-link");
-        thumbLink.href = entry.href;
-        var thumb = make("img", "cp-file-thumb");
-        thumb.alt = "";
-        if (shouldUseBlobThumbFallback()) {
-          thumb.loading = "eager";
-        } else {
-          thumb.loading = "lazy";
-          thumb.decoding = "async";
-        }
-        thumbLink.appendChild(thumb);
-        thumbWrap.appendChild(thumbLink);
-        top.appendChild(thumbWrap);
-        attachThumbLoader(thumb, thumbWrap, thumbLink, entry);
-      }
-
-      if (entry.isFolder) {
-        main.appendChild(make("span", "cp-kind", "Folder"));
-      }
-
-      var nameLink = make("a", "cp-file-name", entry.name || entry.href);
-      nameLink.href = entry.href;
-      if (!entry.isFolder) {
-        nameLink.setAttribute("download", entry.name || "");
-      }
-      main.appendChild(nameLink);
-
-      var meta = make("div", "cp-file-meta");
-      if (entry.size) meta.appendChild(make("span", null, "Size: " + entry.size));
-      if (entry.files && entry.files !== "---") meta.appendChild(make("span", null, "Items: " + entry.files));
-      if (entry.date && entry.date !== "---") meta.appendChild(make("span", null, "Updated: " + entry.date));
-      main.appendChild(meta);
-
-      var openBtn = make("a", "cp-card-btn", entry.isFolder ? "Open Folder" : "Download File");
-      openBtn.href = entry.href;
-      if (!entry.isFolder) {
-        openBtn.setAttribute("download", entry.name || "");
-      }
-      actions.appendChild(openBtn);
-
-      if (entry.isFolder) {
-        var zipBtn = make("a", "cp-card-btn", "Download Folder");
-        zipBtn.href = entry.href.replace(/\/?$/, "/") + "?zip";
-        actions.appendChild(zipBtn);
-      }
-
-      bodyWrap.appendChild(main);
-      bodyWrap.appendChild(actions);
-      top.appendChild(bodyWrap);
-      card.appendChild(top);
-      wrap.appendChild(card);
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") closeFolderCreator();
     });
-
-    return {
-      cards: wrap,
-      shareRootName: shareRootName
-    };
   }
 
-  function init() {
-    if (!matchesPath()) return;
-    if (wantsNativeBrowser()) return;
+  function openFolderCreator() {
+    var panel = document.getElementById("op_mkdir");
+    var modal = document.getElementById("cp-mkdir-modal");
+    if (!panel || !modal) return;
+    var launcher = document.getElementById("opa_mkd");
+    if (launcher) launcher.click();
+    panel.classList.add("act");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("cp-modal-open");
+    setTimeout(function () {
+      var input = panel.querySelector('input[name="name"]');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 0);
+  }
 
-    enableActiveTabRefresh();
+  function closeFolderCreator() {
+    var modal = document.getElementById("cp-mkdir-modal");
+    if (!modal || modal.getAttribute("aria-hidden") === "true") return;
+    var close = document.getElementById("opa_x");
+    if (close) close.click();
+    var panel = document.getElementById("op_mkdir");
+    if (panel) panel.classList.remove("act");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("cp-modal-open");
+  }
 
-    var mode = pageMode();
-    var table = document.getElementById("files");
-    var zipLink = document.querySelector('a[href*="?zip"]');
-    var uploadLink = document.getElementById("opa_up");
-    var mkdirLink = findNativeMkdirLauncher();
-    var path = document.getElementById("path");
-    var pathText = path ? text(path) : "";
-    var titleTooltip = path ? formatPathTitle(pathText) : "Downloads";
+  function openUploader(chooseFiles) {
+    var details = document.getElementById("cp-upload-panel");
+    var panel = document.getElementById("op_up2k");
+    if (details) details.open = true;
+    if (panel) panel.classList.add("act");
 
-    if (mode === "dropbox") {
-      var dropboxPanel = buildDropboxPanel(uploadLink);
-      if (!dropboxPanel) return;
+    var nativeTab = document.getElementById("opa_up");
+    if (nativeTab) nativeTab.click();
+    if (!chooseFiles) return;
 
-      var dropboxHero = buildDropboxHero("Send Files", titleTooltip || "Share");
+    var attempts = 0;
+    function launch() {
+      var nativeButton = document.getElementById("u2btn");
+      if (nativeButton) {
+        nativeButton.click();
+        return;
+      }
+      attempts += 1;
+      if (attempts < 30) {
+        setTimeout(launch, 50);
+        return;
+      }
+      announce("Uploader is ready below. Choose files from the upload panel.");
+    }
+    setTimeout(launch, 0);
+  }
 
-      document.documentElement.classList.add("cp-simple-browser-root");
-      document.body.classList.add("cp-simple-browser", "cp-dropbox");
+  function observeUploader(panel) {
+    if (!window.MutationObserver || panel.dataset.cpObserved) return;
+    panel.dataset.cpObserved = "1";
+    var observer = new MutationObserver(function () {
+      var details = document.getElementById("cp-upload-panel");
+      var table = document.getElementById("u2tab");
+      if (details && table && table.querySelector("tbody tr")) details.open = true;
+      scheduleRefresh(1400);
+    });
+    observer.observe(panel, { childList: true, subtree: true, characterData: true });
+  }
 
-      mountDropboxShell(dropboxHero, dropboxPanel, table, path, document.getElementById("acc_info"));
-      normalizeDropboxLifetime();
+  function scheduleRefresh(delay) {
+    clearTimeout(state.refreshTimer);
+    state.refreshTimer = setTimeout(function () {
+      refreshListing(false);
+    }, delay || 800);
+  }
+
+  function announce(message) {
+    var live = document.getElementById("cp-live-status");
+    if (live) live.textContent = message;
+  }
+
+  function thumbHref(item) {
+    var url = new URL(item.href, location.href);
+    url.searchParams.set("th", "wf");
+    url.searchParams.set("cache", "i");
+    url.searchParams.set("raster", "");
+    return url.href;
+  }
+
+  function thumbFallbackHref(item) {
+    var url = new URL(item.href, location.href);
+    url.searchParams.set("th", "w");
+    url.searchParams.set("cache", "i");
+    url.searchParams.set("raster", "");
+    return url.href;
+  }
+
+  function shouldThumb(item) {
+    return THUMBABLE.test(entryName(item.href)) || !!(item.tags && (item.tags.res || item.tags.vc));
+  }
+
+  function fileType(item) {
+    var ext = String(item.ext || "").replace(/^\./, "");
+    if (!ext || ext === "---") {
+      var match = /\.([a-z0-9]{1,8})$/i.exec(entryName(item.href));
+      ext = match ? match[1] : "file";
+    }
+    return ext.toUpperCase();
+  }
+
+  function itemHref(item) {
+    return new URL(item.href, location.href).href;
+  }
+
+  function folderZipHref(item) {
+    var url = new URL(item.href, location.href);
+    var current = new URL(location.href);
+    current.searchParams.forEach(function (value, key) {
+      if (key !== "v" && key !== "fullui" && key !== "ls") url.searchParams.set(key, value);
+    });
+    url.searchParams.set("zip", "");
+    return url.href;
+  }
+
+  function renderListing(data) {
+    var listing = document.getElementById("cp-listing");
+    if (!listing) return;
+    listing.textContent = "";
+
+    var dirs = Array.isArray(data.dirs) ? data.dirs : [];
+    var files = Array.isArray(data.files) ? data.files : [];
+    if (!dirs.length && !files.length) {
+      var empty = make("div", "cp-empty");
+      empty.appendChild(icon("folder"));
+      empty.appendChild(make("h3", null, "Nothing here yet"));
+      empty.appendChild(make("p", null, canWrite(data) ? "Upload the first file to get started." : "This shared folder is empty."));
+      if (canWrite(data)) {
+        var emptyUpload = button("Upload files", "cp-button cp-primary", "upload");
+        emptyUpload.addEventListener("click", function () {
+          openUploader(true);
+        });
+        empty.appendChild(emptyUpload);
+      }
+      listing.appendChild(empty);
       return;
     }
 
-    if (!table) return;
+    if (dirs.length) {
+      var folderSection = make("section", "cp-group");
+      folderSection.appendChild(make("h3", null, "Folders"));
+      var folderGrid = make("div", "cp-folder-grid");
+      dirs.forEach(function (item) {
+        folderGrid.appendChild(renderFolder(item));
+      });
+      folderSection.appendChild(folderGrid);
+      listing.appendChild(folderSection);
+    }
 
-    var cardView = buildCards(table, pathText);
-    if (!cardView) return;
+    if (files.length) {
+      var fileSection = make("section", "cp-group");
+      fileSection.appendChild(make("h3", null, "Files"));
+      var fileGrid = make("div", "cp-file-grid");
+      files.forEach(function (item) {
+        fileGrid.appendChild(renderFile(item));
+      });
+      fileSection.appendChild(fileGrid);
+      listing.appendChild(fileSection);
+    }
+  }
 
-    var heroTitle = pickHeroTitle(pathText, cardView.shareRootName, path);
-    var hero = buildHero(zipLink, heroTitle, titleTooltip || heroTitle, uploadLink, mkdirLink);
-    var cards = cardView.cards;
+  function renderFolder(item) {
+    var card = make("article", "cp-folder-card");
+    var folderLink = make("a", "cp-folder-main");
+    folderLink.href = itemHref(item);
+    var visual = make("span", "cp-folder-icon");
+    visual.appendChild(icon("folder"));
+    folderLink.appendChild(visual);
+    var copy = make("span", "cp-folder-copy");
+    copy.appendChild(make("strong", null, entryName(item.href)));
+    var count = item.tags && item.tags[".files"] !== undefined ? Number(item.tags[".files"]) : 0;
+    var meta = count ? count + (count === 1 ? " item" : " items") : "Folder";
+    if (item.sz) meta += " · " + formatBytes(item.sz);
+    copy.appendChild(make("small", null, meta));
+    folderLink.appendChild(copy);
+    folderLink.appendChild(icon("chevron"));
+    card.appendChild(folderLink);
 
-    document.documentElement.classList.add("cp-simple-browser-root");
-    document.body.classList.add("cp-simple-browser");
+    var zip = linkButton("Download", folderZipHref(item), "cp-folder-download", "download");
+    zip.setAttribute("aria-label", "Download " + entryName(item.href));
+    card.appendChild(zip);
+    return card;
+  }
 
-    mountSimpleShell(hero, cards, table, path, document.getElementById("acc_info"));
+  function renderFile(item) {
+    var card = make("article", "cp-file-card");
+    var preview = make("a", "cp-preview");
+    preview.href = itemHref(item);
+    preview.setAttribute("aria-label", "Open " + entryName(item.href));
+    var fallback = make("span", "cp-file-fallback", fileType(item));
+    preview.appendChild(fallback);
+
+    if (shouldThumb(item)) {
+      var image = make("img");
+      image.alt = "";
+      image.loading = "lazy";
+      image.decoding = "async";
+      image.src = thumbHref(item);
+      image.addEventListener("error", function () {
+        if (!image.dataset.cpFallback) {
+          image.dataset.cpFallback = "1";
+          image.src = thumbFallbackHref(item);
+          return;
+        }
+        image.remove();
+      });
+      preview.appendChild(image);
+    }
+    card.appendChild(preview);
+
+    var body = make("div", "cp-file-body");
+    var name = make("a", "cp-file-name", entryName(item.href));
+    name.href = itemHref(item);
+    name.setAttribute("download", entryName(item.href));
+    name.title = entryName(item.href);
+    body.appendChild(name);
+    var meta = make("p", "cp-file-meta");
+    meta.appendChild(make("span", null, formatBytes(item.sz)));
+    var date = formatDate(item.ts);
+    if (date) meta.appendChild(make("span", null, date));
+    body.appendChild(meta);
+    var download = linkButton("Download", itemHref(item), "cp-file-download", "download");
+    download.setAttribute("download", entryName(item.href));
+    download.setAttribute("aria-label", "Download " + entryName(item.href));
+    body.appendChild(download);
+    card.appendChild(body);
+    return card;
+  }
+
+  function setLoading(loading) {
+    var content = document.querySelector(".cp-content");
+    if (content) content.classList.toggle("is-loading", !!loading);
+  }
+
+  function showError(message) {
+    var listing = document.getElementById("cp-listing");
+    if (!listing) return;
+    listing.textContent = "";
+    var error = make("div", "cp-error");
+    error.appendChild(make("h3", null, "Could not refresh this folder"));
+    error.appendChild(make("p", null, message || "Check the connection and try again."));
+    var retry = button("Try again", "cp-button cp-secondary", "refresh");
+    retry.addEventListener("click", function () {
+      refreshListing(true);
+    });
+    error.appendChild(retry);
+    listing.appendChild(error);
+  }
+
+  function fetchListing() {
+    return fetch(listingUrl(location.href), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    }).then(function (response) {
+      if (!response.ok) throw new Error("Server returned " + response.status);
+      return response.json();
+    });
+  }
+
+  function refreshListing(announceResult) {
+    if (state.refreshBusy) {
+      state.refreshQueued = true;
+      return Promise.resolve();
+    }
+    state.refreshBusy = true;
+    setLoading(true);
+    return fetchListing()
+      .then(function (data) {
+        state.data = data;
+        renderListing(data);
+        if (announceResult) announce("File list refreshed.");
+      })
+      .catch(function (err) {
+        if (!state.data) showError(err && err.message);
+      })
+      .then(function () {
+        state.refreshBusy = false;
+        setLoading(false);
+        if (state.refreshQueued) {
+          state.refreshQueued = false;
+          return refreshListing(false);
+        }
+      });
+  }
+
+  function init() {
+    if (!isSharePath(location.pathname) || wantsNativeBrowser(location.search)) return;
+    fetchListing()
+      .then(function (data) {
+        state.data = data;
+        document.documentElement.classList.add("cp-client-ui-root");
+        document.body.classList.add("cp-client-ui");
+        createShell(data);
+        renderListing(data);
+        window.addEventListener("focus", function () {
+          scheduleRefresh(300);
+        });
+      })
+      .catch(function () {
+        // Fail open: leave Copyparty's native interface untouched.
+      });
+  }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      entryName: entryName,
+      formatBytes: formatBytes,
+      isSharePath: isSharePath,
+      listingUrl: listingUrl,
+      shareContext: shareContext,
+      wantsNativeBrowser: wantsNativeBrowser,
+      withQuery: withQuery
+    };
+    return;
   }
 
   if (document.readyState === "loading") {

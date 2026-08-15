@@ -15,8 +15,8 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $sourceAssetRoot = Join-Path $projectRoot "ui-assets"
-$resolvedProjectRoot = (Resolve-Path -LiteralPath $projectRoot).Path
-$resolvedLiveRoot = (Resolve-Path -LiteralPath $LiveRoot).Path
+$resolvedProjectRoot = (Resolve-Path -LiteralPath $projectRoot).ProviderPath
+$resolvedLiveRoot = (Resolve-Path -LiteralPath $LiveRoot).ProviderPath
 
 if (-not (Test-Path -LiteralPath (Join-Path $resolvedProjectRoot ".git"))) {
     throw "Project root is not a Git working tree: $resolvedProjectRoot"
@@ -77,7 +77,8 @@ $updatedConfig = foreach ($line in Get-Content -LiteralPath $liveConfig) {
     $line
 }
 
-Set-Content -LiteralPath $liveConfig -Value $updatedConfig -Encoding utf8NoBOM
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllLines($liveConfig, [string[]]$updatedConfig, $utf8NoBom)
 
 Write-Host "Backup: $backupPath"
 Write-Host "JavaScript: $deployedJs"

@@ -66,7 +66,7 @@ function page(writable) {
       <form id="u2form"><input id="file1" name="file1[]" type="file" multiple></form>
       <div id="u2btn_ct"><button id="u2btn" type="button">choose files</button></div>
       <div id="u2cards"><a href="#">upload settings</a></div>
-      <div id="u2etas">waiting for files</div>
+      <div id="u2etas">Laukiama failų</div>
       <div id="u2life">uploads stay in this fixture</div>
       <div id="u2tabw"><table id="u2tab"><tbody></tbody></table></div>
       <table id="u2conf"><tbody><tr><td>
@@ -84,6 +84,7 @@ function page(writable) {
   <div id="acc_info">${access}</div>
   <div id="wrap"><p>native file manager must stay hidden</p></div>
   <div id="srv_info">native server footer must stay hidden</div>
+  <div><div id="drops" style="display:block"><div id="srch_zd">SEARCH</div></div></div>
   <div id="modal"></div>
   <div id="toast"></div>
   <script src="/ui-assets/client-browser-ui.js"></script>

@@ -42,7 +42,7 @@ test("share context hides token at root and decodes folders", () => {
     token: "token123",
     folders: [],
     root: "/shr/token123/",
-    title: "Shared folder"
+    title: "Bendrinamas aplankas"
   });
   assert.equal(ui.shareContext("/shr/token123/Client%20Exports/").title, "Client Exports");
 });
@@ -54,4 +54,12 @@ test("entry names and byte sizes are client friendly", () => {
   assert.equal(ui.formatBytes(1024), "1 KB");
   assert.equal(ui.formatBytes(1536), "1.5 KB");
   assert.equal(ui.formatBytes(1024 * 1024), "1 MB");
+});
+
+test("Lithuanian item counts use the right noun form", () => {
+  assert.equal(ui.formatItemCount(1), "1 elementas");
+  assert.equal(ui.formatItemCount(2), "2 elementai");
+  assert.equal(ui.formatItemCount(10), "10 elementų");
+  assert.equal(ui.formatItemCount(11), "11 elementų");
+  assert.equal(ui.formatItemCount(21), "21 elementas");
 });

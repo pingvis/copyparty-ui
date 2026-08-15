@@ -75,11 +75,21 @@
     return size.toFixed(digits).replace(/\.0+$/, "").replace(/(\.[0-9])0$/, "$1") + " " + units[unit];
   }
 
+  function formatItemCount(value) {
+    var count = Math.max(0, Number(value) || 0);
+    var mod10 = count % 10;
+    var mod100 = count % 100;
+    var noun = "elementų";
+    if (mod10 === 1 && mod100 !== 11) noun = "elementas";
+    else if (mod10 >= 2 && mod10 <= 9 && (mod100 < 11 || mod100 > 19)) noun = "elementai";
+    return count + " " + noun;
+  }
+
   function formatDate(timestamp) {
     var value = Number(timestamp || 0);
     if (!value) return "";
     try {
-      return new Intl.DateTimeFormat(undefined, {
+      return new Intl.DateTimeFormat("lt-LT", {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -149,15 +159,15 @@
       token: token,
       folders: folders,
       root: "/shr/" + token + "/",
-      title: folders.length ? safeDecode(folders[folders.length - 1]) : "Shared folder"
+      title: folders.length ? safeDecode(folders[folders.length - 1]) : "Bendrinamas aplankas"
     };
   }
 
   function buildBreadcrumbs(context) {
     var nav = make("nav", "cp-breadcrumbs");
-    nav.setAttribute("aria-label", "Folder path");
+    nav.setAttribute("aria-label", "Aplanko kelias");
 
-    var root = make("a", null, "Shared files");
+    var root = make("a", null, "Bendrinami failai");
     root.href = context.root;
     nav.appendChild(root);
 
@@ -198,19 +208,19 @@
     var topbar = make("header", "cp-topbar");
     var brand = make("div", "cp-brand");
     if (parent) {
-      var headerBack = linkButton("Back", parent, "cp-icon-button cp-header-back", "back");
-      headerBack.setAttribute("aria-label", "Back to parent folder");
+      var headerBack = linkButton("Atgal", parent, "cp-icon-button cp-header-back", "back");
+      headerBack.setAttribute("aria-label", "Grįžti į ankstesnį aplanką");
       brand.appendChild(headerBack);
     }
     var brandWords = make("span", "cp-brand-words");
     brandWords.appendChild(make("strong", null, context.title));
-    brandWords.appendChild(make("small", null, "Client delivery"));
+    brandWords.appendChild(make("small", null, "Failų bendrinimas"));
     brand.appendChild(brandWords);
     topbar.appendChild(brand);
 
     var topbarTools = make("div", "cp-topbar-tools");
-    var refresh = button("Refresh", "cp-icon-button cp-top-refresh", "refresh");
-    refresh.setAttribute("aria-label", "Refresh file list");
+    var refresh = button("Atnaujinti", "cp-icon-button cp-top-refresh", "refresh");
+    refresh.setAttribute("aria-label", "Atnaujinti failų sąrašą");
     refresh.addEventListener("click", function () {
       refreshListing(true);
     });
@@ -223,12 +233,12 @@
     shell.appendChild(topbar);
 
     var shareActions = make("nav", "cp-share-actions");
-    shareActions.setAttribute("aria-label", "Folder actions");
-    var downloadAll = linkButton("Download all", withQuery(location.href, "zip"), "cp-button cp-primary", "download");
+    shareActions.setAttribute("aria-label", "Aplanko veiksmai");
+    var downloadAll = linkButton("Atsisiųsti viską", withQuery(location.href, "zip"), "cp-button cp-primary", "download");
     shareActions.appendChild(downloadAll);
 
     if (canWrite(data) && document.getElementById("op_mkdir")) {
-      var mkdir = button("New folder", "cp-button cp-quiet", "folder");
+      var mkdir = button("Naujas aplankas", "cp-button cp-quiet", "folder");
       mkdir.addEventListener("click", openFolderCreator);
       shareActions.appendChild(mkdir);
     }
@@ -238,7 +248,7 @@
     if (canWrite(data)) shell.appendChild(buildUploadSection());
 
     var content = make("section", "cp-content");
-    var heading = make("h2", "cp-sr-only", "Files and folders");
+    var heading = make("h2", "cp-sr-only", "Failai ir aplankai");
     heading.id = "cp-content-title";
     content.appendChild(heading);
 
@@ -264,7 +274,7 @@
     var summary = make("summary");
     summary.appendChild(icon("upload"));
     var copy = make("span");
-    copy.appendChild(make("strong", null, "Upload"));
+    copy.appendChild(make("strong", null, "Įkelti"));
     summary.appendChild(copy);
     summary.appendChild(icon("chevron"));
     summary.addEventListener("pointerup", function () {
@@ -276,7 +286,7 @@
     dropzone.type = "button";
     dropzone.appendChild(icon("upload"));
     var dropCopy = make("span");
-    dropCopy.appendChild(make("strong", null, "Choose files or drop them here"));
+    dropCopy.appendChild(make("strong", null, "Pasirinkite failus arba nuvilkite juos čia"));
     dropzone.appendChild(dropCopy);
     dropzone.addEventListener("click", function () {
       openUploader(true);
@@ -284,7 +294,7 @@
     details.appendChild(dropzone);
 
     var parallel = make("div", "cp-parallel-control");
-    parallel.appendChild(make("span", null, "Parallel uploads"));
+    parallel.appendChild(make("span", null, "Lygiagretūs įkėlimai"));
     var parallelNative = make("div", "cp-parallel-native");
     parallelNative.id = "cp-parallel-native";
     parallel.appendChild(parallelNative);
@@ -306,6 +316,8 @@
         var control = document.getElementById(id);
         if (parallelNative && control) parallelNative.appendChild(control);
       });
+      var parallelInput = document.getElementById("nthread");
+      if (parallelInput) parallelInput.setAttribute("aria-label", "Lygiagretūs įkėlimai");
       state.uploaderMounted = true;
       observeUploader(uploadPanel);
     }
@@ -317,7 +329,7 @@
       modal.setAttribute("aria-hidden", "true");
       var backdrop = make("button", "cp-modal-backdrop");
       backdrop.type = "button";
-      backdrop.setAttribute("aria-label", "Close new folder dialog");
+      backdrop.setAttribute("aria-label", "Uždaryti naujo aplanko langą");
       backdrop.addEventListener("click", closeFolderCreator);
       modal.appendChild(backdrop);
 
@@ -326,15 +338,19 @@
       dialog.setAttribute("aria-modal", "true");
       dialog.setAttribute("aria-labelledby", "cp-mkdir-title");
       var head = make("header");
-      var title = make("h2", null, "Create a folder");
+      var title = make("h2", null, "Sukurti aplanką");
       title.id = "cp-mkdir-title";
       head.appendChild(title);
-      var close = button("Close", "cp-icon-button", "x");
-      close.setAttribute("aria-label", "Close new folder dialog");
+      var close = button("Uždaryti", "cp-icon-button", "x");
+      close.setAttribute("aria-label", "Uždaryti naujo aplanko langą");
       close.addEventListener("click", closeFolderCreator);
       head.appendChild(close);
       dialog.appendChild(head);
       dialog.appendChild(mkdirPanel);
+      var folderName = mkdirPanel.querySelector('input[name="name"]');
+      if (folderName) folderName.placeholder = "Aplanko pavadinimas";
+      var folderSubmit = mkdirPanel.querySelector('input[type="submit"]');
+      if (folderSubmit) folderSubmit.value = "Sukurti";
       modal.appendChild(dialog);
       shell.appendChild(modal);
 
@@ -405,7 +421,7 @@
         setTimeout(launch, 50);
         return;
       }
-      announce("Uploader is ready below. Choose files from the upload panel.");
+      announce("Įkėlimo skiltis paruošta. Pasirinkite failus.");
     }
     setTimeout(launch, 0);
   }
@@ -487,10 +503,10 @@
     if (!dirs.length && !files.length) {
       var empty = make("div", "cp-empty");
       empty.appendChild(icon("folder"));
-      empty.appendChild(make("h3", null, "Nothing here yet"));
-      empty.appendChild(make("p", null, canWrite(data) ? "Upload the first file to get started." : "This shared folder is empty."));
+      empty.appendChild(make("h3", null, "Čia kol kas tuščia"));
+      empty.appendChild(make("p", null, canWrite(data) ? "Įkelkite pirmąjį failą." : "Šis bendrinamas aplankas tuščias."));
       if (canWrite(data)) {
-        var emptyUpload = button("Upload files", "cp-button cp-primary", "upload");
+        var emptyUpload = button("Įkelti failus", "cp-button cp-primary", "upload");
         emptyUpload.addEventListener("click", function () {
           openUploader(true);
         });
@@ -502,7 +518,7 @@
 
     if (dirs.length) {
       var folderSection = make("section", "cp-group");
-      folderSection.appendChild(make("h3", null, "Folders"));
+      folderSection.appendChild(make("h3", null, "Aplankai"));
       var folderGrid = make("div", "cp-folder-grid");
       dirs.forEach(function (item) {
         folderGrid.appendChild(renderFolder(item));
@@ -513,7 +529,7 @@
 
     if (files.length) {
       var fileSection = make("section", "cp-group");
-      fileSection.appendChild(make("h3", null, "Files"));
+      fileSection.appendChild(make("h3", null, "Failai"));
       var fileGrid = make("div", "cp-file-grid");
       files.forEach(function (item) {
         fileGrid.appendChild(renderFile(item));
@@ -542,15 +558,15 @@
     var copy = make("span", "cp-folder-copy");
     copy.appendChild(make("strong", null, entryName(item.href)));
     var count = item.tags && item.tags[".files"] !== undefined ? Number(item.tags[".files"]) : 0;
-    var meta = count ? count + (count === 1 ? " item" : " items") : "Folder";
+    var meta = count ? formatItemCount(count) : "Aplankas";
     if (item.sz) meta += " · " + formatBytes(item.sz);
     copy.appendChild(make("small", null, meta));
     folderLink.appendChild(copy);
     folderLink.appendChild(icon("chevron"));
     card.appendChild(folderLink);
 
-    var zip = linkButton("Download", folderZipHref(item), "cp-folder-download", "download");
-    zip.setAttribute("aria-label", "Download " + entryName(item.href));
+    var zip = linkButton("Atsisiųsti", folderZipHref(item), "cp-folder-download", "download");
+    zip.setAttribute("aria-label", "Atsisiųsti " + entryName(item.href));
     card.appendChild(zip);
     return card;
   }
@@ -559,7 +575,7 @@
     var card = make("article", "cp-file-card");
     var preview = make("a", "cp-preview");
     preview.href = itemHref(item);
-    preview.setAttribute("aria-label", "Open " + entryName(item.href));
+    preview.setAttribute("aria-label", "Atidaryti " + entryName(item.href));
     var fallback = make("span", "cp-file-fallback", fileType(item));
     preview.appendChild(fallback);
 
@@ -592,9 +608,9 @@
     var date = formatDate(item.ts);
     if (date) meta.appendChild(make("span", null, date));
     body.appendChild(meta);
-    var download = linkButton("Download", itemHref(item), "cp-file-download", "download");
+    var download = linkButton("Atsisiųsti", itemHref(item), "cp-file-download", "download");
     download.setAttribute("download", entryName(item.href));
-    download.setAttribute("aria-label", "Download " + entryName(item.href));
+    download.setAttribute("aria-label", "Atsisiųsti " + entryName(item.href));
     body.appendChild(download);
     card.appendChild(body);
     return card;
@@ -610,9 +626,9 @@
     if (!listing) return;
     listing.textContent = "";
     var error = make("div", "cp-error");
-    error.appendChild(make("h3", null, "Could not refresh this folder"));
-    error.appendChild(make("p", null, message || "Check the connection and try again."));
-    var retry = button("Try again", "cp-button cp-secondary", "refresh");
+    error.appendChild(make("h3", null, "Nepavyko atnaujinti aplanko"));
+    error.appendChild(make("p", null, message || "Patikrinkite ryšį ir bandykite dar kartą."));
+    var retry = button("Bandyti dar kartą", "cp-button cp-secondary", "refresh");
     retry.addEventListener("click", function () {
       refreshListing(true);
     });
@@ -626,7 +642,7 @@
       headers: { Accept: "application/json" },
       cache: "no-store"
     }).then(function (response) {
-      if (!response.ok) throw new Error("Server returned " + response.status);
+      if (!response.ok) throw new Error("Serverio atsakas: " + response.status);
       return response.json();
     });
   }
@@ -642,7 +658,7 @@
       .then(function (data) {
         state.data = data;
         renderListing(data);
-        if (announceResult) announce("File list refreshed.");
+        if (announceResult) announce("Failų sąrašas atnaujintas.");
       })
       .catch(function (err) {
         if (!state.data) showError(err && err.message);
@@ -666,6 +682,7 @@
     fetchListing()
       .then(function (data) {
         state.data = data;
+        document.documentElement.lang = "lt";
         document.documentElement.classList.add("cp-client-ui-root");
         document.body.classList.add("cp-client-ui");
         createShell(data);
@@ -683,6 +700,7 @@
     module.exports = {
       entryName: entryName,
       formatBytes: formatBytes,
+      formatItemCount: formatItemCount,
       isSharePath: isSharePath,
       listingUrl: listingUrl,
       shareContext: shareContext,

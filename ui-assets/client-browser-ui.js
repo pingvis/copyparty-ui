@@ -1,12 +1,29 @@
 (function () {
   "use strict";
 
-  var PATH_PATTERNS = [/^\/shr\//];
+  var BROWSER_PATH_PATTERNS = [/^\/shr\//];
+  var DROPBOX_HOSTNAMES = ["files.avideo.lt"];
+  var DROPBOX_PATH_PATTERNS = [/^\/share\/?$/];
 
-  function matchesPath() {
-    return PATH_PATTERNS.some(function (re) {
+  function matchesPatterns(patterns) {
+    return patterns.some(function (re) {
       return re.test(location.pathname);
     });
+  }
+
+  function pageMode() {
+    if (
+      DROPBOX_HOSTNAMES.indexOf(location.hostname) !== -1 &&
+      matchesPatterns(DROPBOX_PATH_PATTERNS)
+    ) {
+      return "dropbox";
+    }
+    if (matchesPatterns(BROWSER_PATH_PATTERNS)) return "browser";
+    return "";
+  }
+
+  function matchesPath() {
+    return !!pageMode();
   }
 
   function wantsNativeBrowser() {
@@ -106,6 +123,132 @@
     return href + (href.indexOf("?") === -1 ? "?" : "&") + "th=wf&cache=i&raster";
   }
 
+  function thumbIconUrl(href) {
+    if (!href || href.charAt(0) === "#") return "";
+    return href + (href.indexOf("?") === -1 ? "?" : "&") + "th=w&cache=i&raster";
+  }
+
+  function shouldUseBlobThumbFallback() {
+    var ua = navigator.userAgent || "";
+    return !!(
+      window.fetch &&
+      window.URL &&
+      typeof URL.createObjectURL === "function" &&
+      (/(?:iPad|iPhone|iPod)/.test(ua) ||
+        (/AppleWebKit/i.test(ua) &&
+          /Mobile/i.test(ua) &&
+          !/(?:CriOS|FxiOS|EdgiOS|OPiOS)/.test(ua)))
+    );
+  }
+
+  function fetchThumbObjectUrl(url) {
+    return fetch(url, { credentials: "same-origin" })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("thumb " + response.status);
+        }
+        return response.blob();
+      })
+      .then(function (blob) {
+        if (!blob || !blob.size) {
+          throw new Error("empty thumb");
+        }
+        return URL.createObjectURL(blob);
+      });
+  }
+
+  function thumbFallbackLabel(name) {
+    var match = /\.([a-z0-9]{1,8})(?:[?#].*)?$/i.exec(name || "");
+    return match ? match[1].toUpperCase() : "FILE";
+  }
+
+  function applyThumbFallback(thumbWrap, thumbLink, thumb, entryName) {
+    if (thumb && thumb.parentNode) {
+      thumb.parentNode.removeChild(thumb);
+    }
+
+    thumbWrap.classList.add("is-fallback");
+    thumbWrap.setAttribute("data-ext", thumbFallbackLabel(entryName));
+    thumbLink.classList.add("is-fallback");
+  }
+
+  function attachThumbLoader(thumb, thumbWrap, thumbLink, entry) {
+    var candidates = [{ url: thumbUrl(entry.href), blob: false }];
+    if (shouldUseBlobThumbFallback()) {
+      candidates.push({ url: thumbUrl(entry.href), blob: true });
+    }
+    candidates.push({ url: thumbIconUrl(entry.href), blob: false });
+
+    var candidateIndex = 0;
+    var activeBlobUrl = "";
+    var requestId = 0;
+
+    function cleanupBlobUrl() {
+      if (!activeBlobUrl || !window.URL || typeof URL.revokeObjectURL !== "function") {
+        return;
+      }
+
+      try {
+        URL.revokeObjectURL(activeBlobUrl);
+      } catch (ex) {
+        // ignore stale blob revocation failures
+      }
+      activeBlobUrl = "";
+    }
+
+    function finalizeFallback() {
+      cleanupBlobUrl();
+      applyThumbFallback(thumbWrap, thumbLink, thumb, entry.name);
+    }
+
+    function loadCandidate(index) {
+      var candidate = candidates[index];
+      if (!candidate || !candidate.url) {
+        finalizeFallback();
+        return;
+      }
+
+      cleanupBlobUrl();
+
+      if (candidate.blob) {
+        var thisRequest = ++requestId;
+        fetchThumbObjectUrl(candidate.url)
+          .then(function (objectUrl) {
+            if (thisRequest !== requestId) {
+              if (window.URL && typeof URL.revokeObjectURL === "function") {
+                URL.revokeObjectURL(objectUrl);
+              }
+              return;
+            }
+
+            activeBlobUrl = objectUrl;
+            thumb.src = objectUrl;
+          })
+          .catch(function () {
+            if (thisRequest !== requestId) return;
+            candidateIndex += 1;
+            loadCandidate(candidateIndex);
+          });
+        return;
+      }
+
+      thumb.src = candidate.url;
+    }
+
+    thumb.addEventListener("load", function () {
+      thumbWrap.classList.remove("is-fallback");
+      thumbWrap.removeAttribute("data-ext");
+      thumbLink.classList.remove("is-fallback");
+    });
+
+    thumb.addEventListener("error", function () {
+      candidateIndex += 1;
+      loadCandidate(candidateIndex);
+    });
+
+    loadCandidate(candidateIndex);
+  }
+
   function pickIndices(table) {
     var headers = Array.from(table.querySelectorAll("thead th")).map(function (node) {
       return text(node).replace(/^[^a-z0-9]+/i, "").toLowerCase();
@@ -135,18 +278,70 @@
     suppressRefreshUntil = Math.max(suppressRefreshUntil, Date.now() + (ms || 0));
   }
 
+  function findIndexedUploadInput(prefix) {
+    var index = Number(window.fdom_ctr || 0);
+    if (index > 0) {
+      var indexed = document.getElementById(prefix + index);
+      if (indexed) {
+        return indexed;
+      }
+    }
+
+    var inputs = Array.prototype.slice.call(
+      document.querySelectorAll("#op_up2k input[type=file]")
+    ).filter(function (input) {
+      var isFolder = !!input.webkitdirectory;
+      return prefix === "dir" ? isFolder : !isFolder;
+    });
+
+    return inputs.length ? inputs[inputs.length - 1] : null;
+  }
+
   function findNativeUploadInput() {
     return (
-      document.querySelector("#op_up2k input[type=file]:not([webkitdirectory])") ||
+      findIndexedUploadInput("file") ||
       document.getElementById("file1") ||
       document.querySelector("input[type=file][name='file1[]']")
     );
   }
 
+  function primeUploadContext() {
+    if (typeof window.start_actx === "function") {
+      window.start_actx();
+    }
+  }
+
+  function findNativeFolderUploadInput() {
+    return (
+      findIndexedUploadInput("dir") ||
+      document.getElementById("dir1") ||
+      document.querySelector("input[type=file][name='dir1[]'][webkitdirectory]")
+    );
+  }
+
   function openNativeUploadPicker(uploadLink) {
     delayActiveTabRefresh(15000);
+    primeUploadContext();
 
     var input = findNativeUploadInput();
+    if (input && typeof input.click === "function") {
+      input.click();
+      return true;
+    }
+
+    if (uploadLink && typeof uploadLink.click === "function") {
+      uploadLink.click();
+      return true;
+    }
+
+    return false;
+  }
+
+  function openNativeFolderPicker(uploadLink) {
+    delayActiveTabRefresh(15000);
+    primeUploadContext();
+
+    var input = findNativeFolderUploadInput();
     if (input && typeof input.click === "function") {
       input.click();
       return true;
@@ -279,6 +474,17 @@
     return hero;
   }
 
+  function buildDropboxHero(titleText, titleTooltip) {
+    var hero = make("section", null);
+    hero.id = "client-hero";
+    var heroTitle = make("h1", null, titleText);
+
+    hero.appendChild(make("p", "cp-kicker", "Secure Upload"));
+    heroTitle.title = titleTooltip || titleText;
+    hero.appendChild(heroTitle);
+    return hero;
+  }
+
   function mountNativeFolderCreator(shell) {
     var panel = findNativeMkdirPanel();
     if (!panel) return;
@@ -382,6 +588,140 @@
     mountNativeFolderCreator(shell);
   }
 
+  function normalizeDropboxLifetime() {
+    var life = document.getElementById("u2life");
+    if (!life || life.dataset.cpDropboxReady) return;
+
+    var minutes = document.getElementById("lifem");
+    var hours = document.getElementById("lifeh");
+    if (!minutes || !hours) return;
+
+    var expires = document.getElementById("lifew");
+    var undo = document.getElementById("undor");
+
+    var fields = make("div", "cp-life-fields");
+    fields.appendChild(make("span", null, "autodelete after"));
+    fields.appendChild(minutes);
+    fields.appendChild(make("span", null, "min"));
+    fields.appendChild(make("span", "cp-life-divider", "or"));
+    fields.appendChild(hours);
+    fields.appendChild(make("span", null, "hours"));
+
+    life.textContent = "";
+    life.appendChild(fields);
+
+    if (expires) {
+      var expiresRow = make("div", "cp-life-row");
+      expiresRow.appendChild(document.createTextNode("upload will be deleted "));
+      expiresRow.appendChild(expires);
+      life.appendChild(expiresRow);
+    }
+
+    if (undo) {
+      life.appendChild(undo);
+    }
+
+    life.dataset.cpDropboxReady = "1";
+  }
+
+  function buildDropboxAction(textContent, primary, onActivate) {
+    var button = make("button", "cp-dropbox-btn" + (primary ? " primary" : ""), textContent);
+    button.type = "button";
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      onActivate();
+    });
+    return button;
+  }
+
+  function buildDropboxPanel(uploadLink) {
+    var uploadPanel = document.getElementById("op_up2k");
+    if (!uploadPanel) return null;
+
+    var panel = make("section", null);
+    panel.id = "cp-dropbox-panel";
+
+    var actions = make("div", "cp-dropbox-actions");
+    var hasAction = false;
+
+    if (canUpload()) {
+      var fileInput = document.getElementById("file1");
+      if (fileInput) {
+        actions.appendChild(
+          buildDropboxAction("Choose Files", true, function () {
+            openNativeUploadPicker(uploadLink);
+          })
+        );
+        hasAction = true;
+      } else if (uploadLink) {
+        var fileBtn = make("button", "cp-dropbox-btn primary", "Choose Files");
+        fileBtn.type = "button";
+        fileBtn.addEventListener("click", function (event) {
+          event.preventDefault();
+          if (!openNativeUploadPicker(uploadLink)) {
+            location.href = location.pathname + "?v=up2k";
+          }
+        });
+        actions.appendChild(fileBtn);
+        hasAction = true;
+      }
+
+      var folderInput = document.getElementById("dir1");
+      if (folderInput) {
+        actions.appendChild(
+          buildDropboxAction("Choose Folder", false, function () {
+            openNativeFolderPicker(uploadLink);
+          })
+        );
+        hasAction = true;
+      } else if (uploadLink) {
+        var folderBtn = make("button", "cp-dropbox-btn", "Choose Folder");
+        folderBtn.type = "button";
+        folderBtn.addEventListener("click", function (event) {
+          event.preventDefault();
+          if (!openNativeFolderPicker(uploadLink)) {
+            location.href = location.pathname + "?v=up2k";
+          }
+        });
+        actions.appendChild(folderBtn);
+        hasAction = true;
+      }
+    }
+
+    if (hasAction) {
+      panel.appendChild(actions);
+    }
+
+    panel.appendChild(uploadPanel);
+
+    return panel;
+  }
+
+  function mountDropboxShell(hero, dropboxPanel, table, path, accInfo) {
+    var shell = document.getElementById("cp-simple-shell");
+    if (!shell) {
+      shell = make("main", null);
+      shell.id = "cp-simple-shell";
+      document.body.insertBefore(shell, document.body.firstChild);
+    }
+
+    var helpers = document.getElementById("cp-native-helpers");
+    if (!helpers) {
+      helpers = make("div", "cp-native-helpers");
+      helpers.id = "cp-native-helpers";
+      helpers.setAttribute("aria-hidden", "true");
+    }
+
+    shell.textContent = "";
+    shell.appendChild(hero);
+    shell.appendChild(dropboxPanel);
+    if (accInfo) shell.appendChild(accInfo);
+    shell.appendChild(helpers);
+
+    if (table) helpers.appendChild(table);
+    if (path) helpers.appendChild(path);
+  }
+
   function buildCards(table, pathText) {
     var idx = pickIndices(table);
     if (idx.name < 0) return null;
@@ -443,20 +783,16 @@
         thumbLink.href = entry.href;
         var thumb = make("img", "cp-file-thumb");
         thumb.alt = "";
-        thumb.loading = "lazy";
-        thumb.decoding = "async";
-        thumb.src = thumbUrl(entry.href);
-        thumb.addEventListener("error", function () {
-          if (thumb.src.indexOf("th=wf") !== -1) {
-            thumb.src = thumb.src.replace("th=wf", "th=w");
-            return;
-          }
-          card.classList.remove("has-thumb");
-          thumbWrap.remove();
-        });
+        if (shouldUseBlobThumbFallback()) {
+          thumb.loading = "eager";
+        } else {
+          thumb.loading = "lazy";
+          thumb.decoding = "async";
+        }
         thumbLink.appendChild(thumb);
         thumbWrap.appendChild(thumbLink);
         top.appendChild(thumbWrap);
+        attachThumbLoader(thumb, thumbWrap, thumbLink, entry);
       }
 
       if (entry.isFolder) {
@@ -508,15 +844,30 @@
 
     enableActiveTabRefresh();
 
+    var mode = pageMode();
     var table = document.getElementById("files");
-    if (!table) return;
-
     var zipLink = document.querySelector('a[href*="?zip"]');
     var uploadLink = document.getElementById("opa_up");
     var mkdirLink = findNativeMkdirLauncher();
     var path = document.getElementById("path");
     var pathText = path ? text(path) : "";
     var titleTooltip = path ? formatPathTitle(pathText) : "Downloads";
+
+    if (mode === "dropbox") {
+      var dropboxPanel = buildDropboxPanel(uploadLink);
+      if (!dropboxPanel) return;
+
+      var dropboxHero = buildDropboxHero("Send Files", titleTooltip || "Share");
+
+      document.documentElement.classList.add("cp-simple-browser-root");
+      document.body.classList.add("cp-simple-browser", "cp-dropbox");
+
+      mountDropboxShell(dropboxHero, dropboxPanel, table, path, document.getElementById("acc_info"));
+      normalizeDropboxLifetime();
+      return;
+    }
+
+    if (!table) return;
 
     var cardView = buildCards(table, pathText);
     if (!cardView) return;

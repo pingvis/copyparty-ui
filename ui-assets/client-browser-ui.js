@@ -267,6 +267,9 @@
     copy.appendChild(make("strong", null, "Upload"));
     summary.appendChild(copy);
     summary.appendChild(icon("chevron"));
+    summary.addEventListener("pointerup", function () {
+      summary.blur();
+    });
     details.appendChild(summary);
 
     var dropzone = make("button", "cp-dropzone");
@@ -526,6 +529,15 @@
     folderLink.href = itemHref(item);
     var visual = make("span", "cp-folder-icon");
     visual.appendChild(icon("folder"));
+    var cover = make("img", "cp-folder-thumb");
+    cover.alt = "";
+    cover.loading = "lazy";
+    cover.decoding = "async";
+    cover.src = thumbFallbackHref(item);
+    cover.addEventListener("error", function () {
+      cover.remove();
+    });
+    visual.appendChild(cover);
     folderLink.appendChild(visual);
     var copy = make("span", "cp-folder-copy");
     copy.appendChild(make("strong", null, entryName(item.href)));

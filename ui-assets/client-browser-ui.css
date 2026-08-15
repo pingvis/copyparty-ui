@@ -310,7 +310,7 @@ body.cp-client-ui .cp-primary {
   border-color: var(--cp-accent);
   background: var(--cp-accent);
   color: var(--cp-accent-ink);
-  box-shadow: 0 12px 30px rgba(211, 213, 218, 0.09);
+  box-shadow: none;
 }
 
 body.cp-client-ui .cp-secondary {
@@ -337,7 +337,12 @@ body.cp-client-ui .cp-folder-download:hover {
 }
 
 body.cp-client-ui .cp-primary:hover {
-  background: #f3c463;
+  background: #eceef1;
+}
+
+body.cp-client-ui .cp-share-actions .cp-quiet {
+  border-color: rgba(255, 255, 255, 0.58);
+  color: var(--cp-text);
 }
 
 body.cp-client-ui .cp-secondary:hover,
@@ -379,6 +384,19 @@ body.cp-client-ui .cp-upload-panel > summary {
   padding: 14px 18px;
   list-style: none;
   cursor: pointer;
+}
+
+body.cp-client-ui .cp-upload-panel > summary:focus,
+body.cp-client-ui .cp-upload-panel > summary:active {
+  outline: none !important;
+  background: transparent !important;
+  color: var(--cp-text) !important;
+  box-shadow: none !important;
+}
+
+body.cp-client-ui .cp-upload-panel > summary:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.28) !important;
+  outline-offset: -2px;
 }
 
 body.cp-client-ui .cp-upload-panel > summary::-webkit-details-marker {
@@ -698,10 +716,12 @@ body.cp-client-ui .cp-folder-main {
 }
 
 body.cp-client-ui .cp-folder-icon {
+  position: relative;
   display: grid;
   width: 44px;
   height: 44px;
   place-items: center;
+  overflow: hidden;
   border-radius: 12px;
   background: rgba(211, 213, 218, 0.08);
   color: var(--cp-accent);
@@ -710,6 +730,19 @@ body.cp-client-ui .cp-folder-icon {
 body.cp-client-ui .cp-folder-icon svg {
   width: 23px;
   height: 23px;
+}
+
+body.cp-client-ui .cp-folder-thumb {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  object-fit: cover;
 }
 
 body.cp-client-ui .cp-folder-copy {

@@ -129,6 +129,12 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (url.searchParams.has("th") && url.pathname.endsWith("/")) {
+    response.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "no-store" });
+    response.end(preview);
+    return;
+  }
+
   if (/\.(?:webp|mp4|pdf)$/.test(url.pathname)) {
     response.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "no-store" });
     response.end(preview);

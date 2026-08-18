@@ -42,7 +42,7 @@ test("share context hides token at root and decodes folders", () => {
     token: "token123",
     folders: [],
     root: "/shr/token123/",
-    title: "Bendrinamas aplankas"
+    title: "token123"
   });
   assert.equal(ui.shareContext("/shr/token123/Client%20Exports/").title, "Client Exports");
 });

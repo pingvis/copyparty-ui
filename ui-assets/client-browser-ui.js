@@ -27,6 +27,42 @@
     }
   }
 
+  function prepareClientUi() {
+    if (
+      !isSharePath(location.pathname) ||
+      wantsNativeBrowser(location.search, location.hash, window.sloc0, window.fullui) ||
+      !document.body
+    )
+      return false;
+
+    document.documentElement.classList.add("cp-client-ui-root");
+    document.body.classList.add("cp-client-ui");
+    return true;
+  }
+
+  function restoreNativeUi() {
+    document.documentElement.classList.remove("cp-client-ui-root");
+    if (document.body) {
+      document.body.classList.remove("cp-client-ui");
+      document.body.classList.remove("cp-ambient-ready");
+    }
+  }
+
+  function scheduleAmbientMotion() {
+    var connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion || (connection && connection.saveData)) return;
+
+    var enable = function () {
+      if (document.body && document.getElementById("cp-client-shell")) {
+        document.body.classList.add("cp-ambient-ready");
+      }
+    };
+
+    if (window.requestIdleCallback) window.requestIdleCallback(enable, { timeout: 1800 });
+    else setTimeout(enable, 700);
+  }
+
   function listingUrl(href) {
     var url = new URL(href);
     url.searchParams.delete("v");
@@ -159,7 +195,7 @@
       token: token,
       folders: folders,
       root: "/shr/" + token + "/",
-      title: folders.length ? safeDecode(folders[folders.length - 1]) : "Bendrinamas aplankas"
+      title: folders.length ? safeDecode(folders[folders.length - 1]) : safeDecode(token)
     };
   }
 
@@ -268,10 +304,20 @@
     return shell;
   }
 
+  function setUploadPanelOpen(panel, expanded) {
+    if (!panel) return;
+    panel.classList.toggle("is-expanded", expanded);
+    var trigger = panel.querySelector(".cp-upload-summary");
+    if (trigger) trigger.setAttribute("aria-expanded", String(expanded));
+  }
+
   function buildUploadSection() {
-    var details = make("details", "cp-upload-panel");
+    var details = make("section", "cp-upload-panel");
     details.id = "cp-upload-panel";
-    var summary = make("summary");
+    var summary = make("button", "cp-upload-summary");
+    summary.type = "button";
+    summary.setAttribute("aria-expanded", "false");
+    summary.setAttribute("aria-controls", "cp-upload-reveal");
     summary.appendChild(icon("upload"));
     var copy = make("span");
     copy.appendChild(make("strong", null, "Įkelti"));
@@ -280,7 +326,16 @@
     summary.addEventListener("pointerup", function () {
       summary.blur();
     });
+    summary.addEventListener("click", function () {
+      setUploadPanelOpen(details, !details.classList.contains("is-expanded"));
+    });
     details.appendChild(summary);
+
+    var reveal = make("div", "cp-upload-reveal");
+    reveal.id = "cp-upload-reveal";
+    var revealInner = make("div", "cp-upload-reveal-inner");
+    reveal.appendChild(revealInner);
+    details.appendChild(reveal);
 
     var dropzone = make("button", "cp-dropzone");
     dropzone.type = "button";
@@ -291,18 +346,18 @@
     dropzone.addEventListener("click", function () {
       openUploader(true);
     });
-    details.appendChild(dropzone);
+    revealInner.appendChild(dropzone);
 
     var parallel = make("div", "cp-parallel-control");
     parallel.appendChild(make("span", null, "Lygiagretūs įkėlimai"));
     var parallelNative = make("div", "cp-parallel-native");
     parallelNative.id = "cp-parallel-native";
     parallel.appendChild(parallelNative);
-    details.appendChild(parallel);
+    revealInner.appendChild(parallel);
 
     var host = make("div", "cp-native-upload-host");
     host.id = "cp-native-upload-host";
-    details.appendChild(host);
+    revealInner.appendChild(host);
     return details;
   }
 
@@ -402,7 +457,7 @@
   function openUploader(chooseFiles) {
     var details = document.getElementById("cp-upload-panel");
     var panel = document.getElementById("op_up2k");
-    if (details) details.open = true;
+    setUploadPanelOpen(details, true);
     if (panel) panel.classList.add("act");
 
     var nativeTab = document.getElementById("opa_up");
@@ -432,7 +487,7 @@
     var observer = new MutationObserver(function () {
       var details = document.getElementById("cp-upload-panel");
       var table = document.getElementById("u2tab");
-      if (details && table && table.querySelector("tbody tr")) details.open = true;
+      if (details && table && table.querySelector("tbody tr")) setUploadPanelOpen(details, true);
       scheduleRefresh(1400);
     });
     observer.observe(panel, { childList: true, subtree: true, characterData: true });
@@ -674,25 +729,21 @@
   }
 
   function init() {
-    if (
-      !isSharePath(location.pathname) ||
-      wantsNativeBrowser(location.search, location.hash, window.sloc0, window.fullui)
-    )
-      return;
+    if (!prepareClientUi()) return;
     fetchListing()
       .then(function (data) {
         state.data = data;
         document.documentElement.lang = "lt";
-        document.documentElement.classList.add("cp-client-ui-root");
-        document.body.classList.add("cp-client-ui");
         createShell(data);
         renderListing(data);
+        scheduleAmbientMotion();
         window.addEventListener("focus", function () {
           scheduleRefresh(300);
         });
       })
       .catch(function () {
-        // Fail open: leave Copyparty's native interface untouched.
+        // Fail open: restore Copyparty's native interface.
+        restoreNativeUi();
       });
   }
 
@@ -709,6 +760,8 @@
     };
     return;
   }
+
+  prepareClientUi();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init, { once: true });

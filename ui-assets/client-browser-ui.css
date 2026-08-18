@@ -14,9 +14,9 @@ html.cp-client-ui-root {
   --cp-accent-ink: #111214;
   --cp-success: #7ed9a6;
   --cp-danger: #ff8c8c;
-  --cp-radius-sm: 12px;
-  --cp-radius: 18px;
-  --cp-radius-lg: 26px;
+  --cp-radius-sm: 10px;
+  --cp-radius: 15px;
+  --cp-radius-lg: 22px;
   --cp-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
   min-height: 100%;
   color-scheme: dark;
@@ -24,16 +24,15 @@ html.cp-client-ui-root {
 }
 
 body.cp-client-ui {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   width: auto !important;
   max-width: none !important;
   margin: 0 !important;
   padding: 0 !important;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at 88% -5%, rgba(255, 255, 255, 0.045), transparent 32rem),
-    radial-gradient(circle at 4% 32%, rgba(255, 255, 255, 0.025), transparent 30rem),
-    var(--cp-bg) !important;
+  background: var(--cp-bg) !important;
   color: var(--cp-text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.5;
@@ -77,9 +76,40 @@ body.cp-client-ui textarea {
 }
 
 body.cp-client-ui .cp-shell {
+  position: relative;
+  z-index: 1;
   width: min(100% - 32px, 1180px);
   margin: 0 auto;
   padding: 22px 0 48px;
+}
+
+body.cp-client-ui .cp-shell::before {
+  content: "";
+  position: fixed;
+  inset: -18vmax;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background-image:
+    linear-gradient(rgba(220, 226, 234, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(220, 226, 234, 0.055) 1px, transparent 1px);
+  background-size: 68px 68px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 12%, rgba(0, 0, 0, 0.72) 52%, transparent 82%);
+  mask-image: radial-gradient(ellipse at center, #000 12%, rgba(0, 0, 0, 0.72) 52%, transparent 82%);
+  transform: translate3d(-20px, -16px, 0) rotate(-2.5deg) scale(1.04);
+  will-change: transform;
+  transition: opacity 1600ms ease;
+}
+
+body.cp-client-ui.cp-ambient-ready .cp-shell::before {
+  opacity: 0.46;
+  animation: cp-grid-drift 38s ease-in-out infinite alternate;
+}
+
+@keyframes cp-grid-drift {
+  to {
+    transform: translate3d(24px, 20px, 0) rotate(-1.5deg) scale(1.04);
+  }
 }
 
 body.cp-client-ui .cp-topbar {
@@ -112,7 +142,7 @@ body.cp-client-ui .cp-brand-mark {
   width: 38px;
   height: 38px;
   place-items: center;
-  border-radius: 11px;
+  border-radius: 9px;
   background: var(--cp-accent);
   color: var(--cp-accent-ink);
   font-size: 18px;
@@ -151,7 +181,7 @@ body.cp-client-ui .cp-access {
   min-height: 32px;
   padding: 7px 11px;
   border: 1px solid var(--cp-border);
-  border-radius: 999px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.035);
   color: var(--cp-muted);
   font-size: 12px;
@@ -372,68 +402,101 @@ body.cp-client-ui .cp-dropzone:focus-visible {
 body.cp-client-ui .cp-upload-panel {
   margin-top: 18px;
   overflow: hidden;
-  border: 1px solid var(--cp-border);
+  border: 1px solid transparent;
   border-radius: var(--cp-radius);
   background: var(--cp-panel);
+  transition: transform 150ms ease, border-color 150ms ease, background-color 150ms ease;
 }
 
-body.cp-client-ui .cp-upload-panel > summary {
+body.cp-client-ui .cp-upload-panel:not(.is-expanded):hover {
+  transform: translateY(-2px);
+  border-color: var(--cp-border-strong);
+  background-color: var(--cp-panel-raised);
+}
+
+body.cp-client-ui .cp-upload-summary {
   display: grid;
+  width: 100%;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 13px;
   align-items: center;
   min-height: 68px;
   padding: 14px 18px;
-  list-style: none;
+  border: 0;
+  background: transparent;
+  color: var(--cp-text);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-body.cp-client-ui .cp-upload-panel > summary:focus,
-body.cp-client-ui .cp-upload-panel > summary:active {
+body.cp-client-ui .cp-upload-summary:focus,
+body.cp-client-ui .cp-upload-summary:active {
   outline: none !important;
   background: transparent !important;
   color: var(--cp-text) !important;
   box-shadow: none !important;
 }
 
-body.cp-client-ui .cp-upload-panel > summary:focus-visible {
+body.cp-client-ui .cp-upload-summary:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.28) !important;
   outline-offset: -2px;
 }
 
-body.cp-client-ui .cp-upload-panel > summary::-webkit-details-marker {
-  display: none;
-}
-
-body.cp-client-ui .cp-upload-panel > summary > svg:first-child {
+body.cp-client-ui .cp-upload-summary > svg:first-child {
   width: 20px;
   height: 20px;
   color: var(--cp-accent);
 }
 
-body.cp-client-ui .cp-upload-panel > summary > svg:last-child {
+body.cp-client-ui .cp-upload-summary > svg:last-child {
   width: 18px;
   height: 18px;
   color: var(--cp-muted);
   transition: transform 150ms ease;
 }
 
-body.cp-client-ui .cp-upload-panel[open] > summary > svg:last-child {
+body.cp-client-ui .cp-upload-panel.is-expanded > .cp-upload-summary > svg:last-child {
   transform: rotate(180deg);
 }
 
-body.cp-client-ui .cp-upload-panel > summary span {
+body.cp-client-ui .cp-upload-summary span {
   display: grid;
 }
 
-body.cp-client-ui .cp-upload-panel > summary strong {
+body.cp-client-ui .cp-upload-summary strong {
   font-size: 14px;
 }
 
-body.cp-client-ui .cp-upload-panel > summary small {
+body.cp-client-ui .cp-upload-summary small {
   margin-top: 2px;
   color: var(--cp-muted);
   font-size: 12px;
+}
+
+body.cp-client-ui .cp-upload-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    grid-template-rows 240ms ease,
+    opacity 180ms ease,
+    visibility 0s linear 240ms;
+}
+
+body.cp-client-ui .cp-upload-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.cp-client-ui .cp-upload-panel.is-expanded > .cp-upload-reveal {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  opacity: 1;
+  transition-delay: 0s;
 }
 
 body.cp-client-ui .cp-dropzone {
@@ -446,7 +509,7 @@ body.cp-client-ui .cp-dropzone {
   margin: 0 16px 16px;
   padding: 18px;
   border: 1px dashed rgba(211, 213, 218, 0.32);
-  border-radius: 15px;
+  border-radius: 12px;
   background: var(--cp-accent-soft);
   color: var(--cp-text);
   text-align: left;
@@ -505,7 +568,7 @@ body.cp-client-ui .cp-parallel-native a {
   height: 30px;
   place-items: center;
   border: 1px solid var(--cp-border-strong);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--cp-panel);
   color: var(--cp-text);
   font-size: 16px;
@@ -517,7 +580,7 @@ body.cp-client-ui .cp-parallel-native input {
   height: 30px;
   padding: 4px 6px;
   border: 1px solid var(--cp-border-strong) !important;
-  border-radius: 8px !important;
+  border-radius: 7px !important;
   background: var(--cp-panel) !important;
   color: var(--cp-text) !important;
   text-align: center;
@@ -596,7 +659,7 @@ body.cp-client-ui .cp-native-upload-host a[role="button"] {
   justify-content: center;
   padding: 8px 12px;
   border: 1px solid var(--cp-border-strong);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.05);
   color: var(--cp-text);
   text-decoration: none;
@@ -624,7 +687,7 @@ body.cp-client-ui .cp-native-upload-host input:not([type="file"]),
 body.cp-client-ui .cp-native-upload-host select {
   min-height: 36px;
   border: 1px solid var(--cp-border-strong) !important;
-  border-radius: 9px !important;
+  border-radius: 8px !important;
   background: var(--cp-bg) !important;
   color: var(--cp-text) !important;
 }
@@ -692,7 +755,7 @@ body.cp-client-ui .cp-folder-card {
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(211, 213, 218, 0.14);
+  border: 1px solid rgba(211, 213, 218, 0);
   border-radius: var(--cp-radius);
   background:
     linear-gradient(110deg, var(--cp-accent-soft), transparent 62%),
@@ -724,7 +787,7 @@ body.cp-client-ui .cp-folder-icon {
   height: 44px;
   place-items: center;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(211, 213, 218, 0.08);
   color: var(--cp-accent);
 }
@@ -794,7 +857,7 @@ body.cp-client-ui .cp-file-card {
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--cp-border);
+  border: 1px solid transparent;
   border-radius: var(--cp-radius);
   background: var(--cp-panel);
   transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
@@ -1035,7 +1098,7 @@ body.cp-client-ui .cp-mkdir-dialog #op_mkdir input[name="name"] {
   min-height: 46px;
   padding: 10px 13px;
   border: 1px solid var(--cp-border-strong);
-  border-radius: 11px;
+  border-radius: 9px;
   background: var(--cp-bg);
   color: var(--cp-text);
 }
@@ -1044,7 +1107,7 @@ body.cp-client-ui .cp-mkdir-dialog #op_mkdir input[type="submit"] {
   min-height: 46px;
   padding: 10px 17px;
   border: 1px solid var(--cp-accent);
-  border-radius: 11px;
+  border-radius: 9px;
   background: var(--cp-accent);
   color: var(--cp-accent-ink);
   font-weight: 800;
@@ -1124,7 +1187,7 @@ body.cp-client-ui .cp-sr-only {
     min-height: 0;
     gap: 26px;
     padding: 24px 20px;
-    border-radius: 20px;
+    border-radius: 18px;
   }
 
   body.cp-client-ui .cp-breadcrumbs {
@@ -1159,7 +1222,7 @@ body.cp-client-ui .cp-sr-only {
     min-width: 0;
   }
 
-  body.cp-client-ui .cp-upload-panel > summary {
+  body.cp-client-ui .cp-upload-summary {
     padding: 13px 14px;
   }
 
@@ -1258,6 +1321,11 @@ body.cp-client-ui .cp-sr-only {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body.cp-client-ui .cp-shell::before {
+    animation: none !important;
+    transition: none !important;
+  }
+
   body.cp-client-ui *,
   body.cp-client-ui *::before,
   body.cp-client-ui *::after {
